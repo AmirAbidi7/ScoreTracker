@@ -1,0 +1,19 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+@theme {
+  --color-primary: #fff000;
+  --color-secondary: #fb48c4;
+  --color-tertiary: #00e6ff;
+  --color-background: #0f172a;
+
+  --font-sans-extrabold: pixel-title;
+  --font-sans-regular: pixel-regular;
+  --font-sans: pixel-regular;
+  --font-sans-medium: pixel-medium;
+  --font-sans-semiBold: pixel-semibold;
+  --font-sans-bold: pixel-bold;
+}
