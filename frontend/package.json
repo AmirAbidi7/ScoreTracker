@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@expo/ui": "~57.0.17",
+    "@nsmr/pixelart-react": "^2.0.0",
     "expo": "~57.0.21",
     "expo-constants": "~57.0.17",
     "expo-device": "~57.0.1",
