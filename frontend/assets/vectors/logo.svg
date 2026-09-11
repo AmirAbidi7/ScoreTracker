@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+  width="512"
+  height="512"
+  viewBox="0 0 512 512"
+  version="1.1"
+  id="svg1"
+  inkscape:export-filename="logo.svg"
+  inkscape:export-xdpi="96"
+  inkscape:export-ydpi="96"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+  xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+    id="namedview1"
+    pagecolor="#ffffff"
+    bordercolor="#000000"
+    borderopacity="0.25"
+    inkscape:showpageshadow="2"
+    inkscape:pageopacity="0.0"
+    inkscape:pagecheckerboard="0"
+    inkscape:deskcolor="#d1d1d1"
+    inkscape:document-units="px">
+    <inkscape:page
+      x="0"
+      y="0"
+      width="512"
+      height="512"
+      id="page2"
+      margin="0"
+      bleed="0" />
+  </sodipodi:namedview>
+  <defs
+    id="defs1" />
+  <g
+    inkscape:label="Layer 1"
+    inkscape:groupmode="layer"
+    id="layer1">
+    <g
+      id="g1"
+      transform="matrix(1.1155733,0,0,1.1155733,-18.000615,-13.079579)"
+      style="stroke-width:0.8964">
+      <rect
+        style="fill:#fb48c4;fill-opacity:1;stroke:none;stroke-width:6.78539;stroke-opacity:1"
+        id="rect2"
+        width="428.7897"
+        height="310.00565"
+        x="47.62447"
+        y="119.69534"
+        ry="0"
+        transform="matrix(0.99722598,-0.07443343,0,1,0,0)" />
+      <rect
+        style="fill:#000000;stroke:none;stroke-width:6.78539"
+        id="rect3"
+        width="414.49673"
+        height="293.47198"
+        x="54.771008"
+        y="127.96216"
+        ry="0"
+        transform="matrix(0.99722598,-0.07443343,0,1,0,0)" />
+      <text
+        xml:space="preserve"
+        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:70.4021px;line-height:0;font-family:'Pixelify Sans';-inkscape-font-specification:'Pixelify Sans';writing-mode:lr-tb;direction:ltr;fill:#fff000;fill-opacity:1;stroke:none;stroke-width:6.77593"
+        x="108.54573"
+        y="270.47076"
+        id="text3"
+        transform="matrix(0.92848347,-0.06930247,0,1.0770251,0,0)"><tspan
+           sodipodi:role="line"
+           id="tspan3"
+           x="108.54573"
+           y="270.47076"
+           style="font-size:70.4021px;stroke-width:6.77593">PlayBoard</tspan></text>
+      <path
+        style="fill:#fb48c4;fill-opacity:1;stroke:none;stroke-width:3.38797;stroke-dasharray:none;stroke-opacity:1"
+        d="M 475.09259,84.234185 444.25672,56.249779 16.135758,87.505455 47.683854,116.13619"
+        id="path1" />
+      <path
+        style="fill:#fb48c4;fill-opacity:1;stroke:none;stroke-width:3.38797;stroke-dasharray:none;stroke-opacity:1"
+        d="M 16.135758,87.505455 V 381.89381 l 31.356618,43.83006 V 116.15048 Z"
+        id="path2" />
+    </g>
+  </g>
+</svg>
