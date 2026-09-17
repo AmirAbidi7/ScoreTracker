@@ -1,7 +1,7 @@
 import "@/global.css";
 import { SplashScreen, Stack } from "expo-router";
 import { useFonts } from "expo-font";
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -20,5 +20,9 @@ export default function RootLayout() {
   if (!loaded && error) {
     return null;
   }
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <StrictMode>
+      <Stack screenOptions={{ headerShown: false }} />
+    </StrictMode>
+  );
 }
