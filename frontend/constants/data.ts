@@ -28,14 +28,17 @@ export const scores: Scoreboard = {
   gameName: "Catan",
   players: [
     {
+      id: 1,
       name: "Amir",
       score: 20,
     },
     {
+      id: 2,
       name: "Dolly",
       score: 10,
     },
     {
+      id: 3,
       name: "Sally",
       score: 8,
     },
