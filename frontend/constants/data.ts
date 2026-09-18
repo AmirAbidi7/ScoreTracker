@@ -18,7 +18,7 @@ export const tabs: AppTab[] = [
   },
   {
     name: "(scoreTracking)/syncGame",
-    title: "Scoreboard",
+    title: "Join",
     icon: QrCode,
   },
 ];
