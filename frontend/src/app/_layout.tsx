@@ -1,7 +1,9 @@
 import "@/global.css";
-import { SplashScreen, Stack } from "expo-router";
 import { useFonts } from "expo-font";
-import { useEffect } from "react";
+import { SplashScreen, Stack } from "expo-router";
+import { StrictMode, useEffect } from "react";
+import { Provider } from "react-redux";
+import { store } from "../../store";
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -20,5 +22,11 @@ export default function RootLayout() {
   if (!loaded && error) {
     return null;
   }
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <StrictMode>
+      <Provider store={store}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </Provider>
+    </StrictMode>
+  );
 }

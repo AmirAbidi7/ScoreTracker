@@ -1,9 +1,9 @@
 import { View, Text } from "react-native";
 
-export default function ScoreTrackingPage() {
+export default function Leaderboard() {
   return (
     <View>
-      <Text></Text>
+      <Text>Leaderboard Page!</Text>
     </View>
   );
 }
