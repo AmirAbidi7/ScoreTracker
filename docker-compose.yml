@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: maindb
+    environment:
+      POSTGRES_PASSWORD: main
+      POSTGRES_USER: main
+      POSTGRES_DB: maindb
+    ports:
+      - 5432:5432
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
