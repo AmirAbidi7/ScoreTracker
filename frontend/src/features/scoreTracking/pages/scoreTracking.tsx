@@ -1,20 +1,21 @@
+import { Plus, Trash } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { scores as sc } from "../../../../constants/data";
-import { Player } from "../domain/Scoreboard";
-import { Plus, Trash } from "lucide-react-native";
+import { useDispatch, useSelector } from "react-redux";
 import { colors } from "../../../../constants/theme";
+import { RootState } from "../../../../store";
+import { Player } from "../domain/Scoreboard";
+import { addPlayer, removePlayer, updateScore } from "../scoreTrackingSlice";
 
 const AddPlayerModal = ({
   active,
   toggleActive,
-  addPlayer,
 }: {
   active: boolean;
   toggleActive: () => void;
-  addPlayer: (playerName: string) => void;
 }) => {
   const [playerName, setPlayerName] = useState("");
+  const dispatch = useDispatch();
 
   return (
     <Modal
@@ -42,7 +43,12 @@ const AddPlayerModal = ({
               </View>
             </Pressable>
 
-            <Pressable onPress={() => addPlayer(playerName)}>
+            <Pressable
+              onPress={() => {
+                dispatch(addPlayer(playerName));
+                toggleActive();
+              }}
+            >
               <View className="bg-black border border-primary p-2">
                 <Text className="text-white font-sans-regular text-md">Add!</Text>
               </View>
@@ -53,21 +59,13 @@ const AddPlayerModal = ({
     </Modal>
   );
 };
-const PlayerCard = ({
-  player,
-  updateScore,
-  ranking,
-  deletePlayer,
-}: {
-  player: Player;
-  updateScore: (playerId: number, amount: number) => void;
-  ranking: number;
-  deletePlayer: (playerId: number) => void;
-}) => {
+const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) => {
   const [amount, setAmount] = useState("1");
+  const dispatch = useDispatch();
+
   return (
     <View className="mx-8 border border-secondary flex items-stretch px-4 bg-black relative p-2">
-      <Pressable onPress={() => deletePlayer(player.id)}>
+      <Pressable onPress={() => dispatch(removePlayer(player.id))}>
         <View className="absolute top-0 right-0 m-2">
           <Trash className="" color={colors.white} />
         </View>
@@ -85,7 +83,7 @@ const PlayerCard = ({
         </View>
         <View className="flex flex-row gap-4 justify-between items-center">
           <Pressable
-            onPress={() => updateScore(player.id, Number(amount))}
+            onPress={() => dispatch(updateScore({ playerId: player.id, amount: Number(amount) }))}
             className="border border-white px-4"
           >
             <Text className="text-white font-sans-regular text-md">+</Text>
@@ -97,7 +95,7 @@ const PlayerCard = ({
             className="text-white font-sans-regular"
           />
           <Pressable
-            onPress={() => updateScore(player.id, -Number(amount))}
+            onPress={() => dispatch(updateScore({ playerId: player.id, amount: -Number(amount) }))}
             className="border border-white px-4"
           >
             <Text className="text-white font-sans-regular text-md">-</Text>
@@ -109,51 +107,16 @@ const PlayerCard = ({
 };
 
 export default function ScoreTrackingPage() {
-  const [scores, setScores] = useState(sc);
+  const scoreboard = useSelector((state: RootState) => state.scoreboard.value);
   const [active, setActive] = useState(false);
-  const rankings = useMemo(sortPlayerRankings, [scores]);
-
-  function updateScore(playerId: number, amount: number) {
-    setScores((currentScores) => ({
-      ...currentScores,
-      players: currentScores.players.map((player) =>
-        player.id == playerId ? { ...player, score: player.score + amount } : player,
-      ),
-    }));
-  }
-
-  function deletePlayer(playerId: number) {
-    setScores((currentScores) => ({
-      ...currentScores,
-      players: currentScores.players.filter((pl) => pl.id !== playerId),
-    }));
-  }
-
-  function addPlayer(playerName: string) {
-    setScores((currentScores) => {
-      const lastPlayer = currentScores.players[currentScores.players.length - 1];
-
-      return {
-        ...currentScores,
-        players: [
-          ...currentScores.players,
-          {
-            id: lastPlayer ? lastPlayer.id + 1 : 1,
-            name: playerName,
-            score: 0,
-          },
-        ],
-      };
-    });
-    setActive(!active);
-  }
+  const rankings = useMemo(sortPlayerRankings, [scoreboard]);
 
   function sortPlayerRankings() {
-    const sortedScores = [...scores.players].sort(
+    const sortedScores = [...scoreboard.players].sort(
       (player1, player2) => player2.score - player1.score,
     );
     const rankings: number[] = [];
-    scores.players.forEach((player) => {
+    scoreboard.players.forEach((player) => {
       const index = sortedScores.findIndex((playa) => player.id === playa.id);
       rankings.push(index + 1);
     });
@@ -165,24 +128,18 @@ export default function ScoreTrackingPage() {
     <View className="bg-black flex-1 pt-12 gap-8 relative">
       <View className="mx-8 px-4 border border-primary bg-black flex justify-between items-center flex-row">
         <Text className="text-white font-sans-medium text-2xl">Game: </Text>
-        <Text className="text-white font-sans-medium text-2xl">{scores.gameName}</Text>
+        <Text className="text-white font-sans-medium text-2xl">{scoreboard.gameName}</Text>
       </View>
       <ScrollView contentContainerClassName="flex gap-8 pb-16">
-        {scores.players.map((currentPlayer, index) => (
+        {scoreboard.players.map((currentPlayer, index) => (
           <PlayerCard
             key={currentPlayer.id}
             ranking={rankings[index]}
             player={currentPlayer}
-            updateScore={updateScore}
-            deletePlayer={deletePlayer}
           ></PlayerCard>
         ))}
       </ScrollView>
-      <AddPlayerModal
-        active={active}
-        toggleActive={() => setActive(!active)}
-        addPlayer={addPlayer}
-      ></AddPlayerModal>
+      <AddPlayerModal active={active} toggleActive={() => setActive(!active)} />
       <Pressable onPress={() => setActive(!active)} className="absolute bottom-0 right-0">
         <View className="border border-primary m-4 p-4 bg-black">
           <Plus color={colors.white} />
