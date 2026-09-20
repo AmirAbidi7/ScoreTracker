@@ -1,0 +1,25 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.2",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "tsx": "^4.23.13"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.1",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "effect": "^4.0.0-rc.116",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "socket.io": "^4.8.3"
+  }
+}
