@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Context, Effect, Layer } from "effect";
+import { scoreboardsTable } from "../models/Scoreboard";
 
 export type Db = ReturnType<typeof drizzle>;
 

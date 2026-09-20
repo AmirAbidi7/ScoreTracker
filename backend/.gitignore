@@ -1,0 +1,48 @@
+# dependencies
+node_modules/
+.bun/
+bun-error.log
+
+# build output
+dist/
+out/
+build/
+coverage/
+*.tsbuildinfo
+*.js.map
+
+# env - keep example tracked
+.env
+.env.*
+!.env.example
+
+# logs / debug
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnp.*
+.pnpm-debug.*
+
+# drizzle / db local
+*.db
+*.sqlite
+*.sqlite-journal
+drizzle/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.vim/
+
+# misc
+.cache/
+.tmp/
+.temp/

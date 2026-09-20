@@ -6,7 +6,7 @@ export interface ScoreboardCreateRequest {
 }
 
 export interface ScoreboardDTO {
-  id: number;
+  id: string;
   gameName: string;
   players: Player[];
 }
