@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-import { Database, type Db } from "../config/db";
+import { Database, DatabaseLive, type Db } from "../config/db";
 import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
 import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
@@ -22,22 +22,6 @@ export class ScoreboardService extends Context.Service<
   ScoreboardService,
   ScoreboardServiceInterface
 >()("ScoreboardService") {}
-
-export const ScoreboardServiceLive = Layer.effect(
-  ScoreboardService,
-  Effect.gen(function* () {
-    const db = yield* Database;
-
-    return ScoreboardService.of({
-      createScoreboard: createScoreboard(db),
-      getScoreboard: getScoreboard(db),
-      getScoreboards: getScoreboards(db),
-      updateScoreboard: updateScoreboard(db),
-      deleteScoreboard: deleteScoreboard(db),
-      joinScoreboard: joinScoreboard(db),
-    });
-  }),
-);
 
 const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
   Effect.gen(function* () {
@@ -165,3 +149,19 @@ const joinScoreboard = (db: Db) => (code: string) =>
     };
     return scoreboardDTO;
   });
+
+export const ScoreboardServiceLive = Layer.effect(
+  ScoreboardService,
+  Effect.gen(function* () {
+    const db = yield* Database;
+
+    return ScoreboardService.of({
+      createScoreboard: createScoreboard(db),
+      getScoreboard: getScoreboard(db),
+      getScoreboards: getScoreboards(db),
+      updateScoreboard: updateScoreboard(db),
+      deleteScoreboard: deleteScoreboard(db),
+      joinScoreboard: joinScoreboard(db),
+    });
+  }),
+).pipe(Layer.provide(DatabaseLive));

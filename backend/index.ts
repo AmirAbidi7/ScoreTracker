@@ -4,8 +4,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { DatabaseLive } from "./config/db";
 import { SocketIOLive } from "./config/websocket";
-import { ScoreboardControllerImpl } from "./controller/scoreboardController";
 import { ScoreboardServiceLive } from "./service/scoreboardService";
+import { ScoreboardControllerLive } from "./controller/scoreboardController";
 
 const app = express();
 const server = createServer(app);
@@ -15,7 +15,7 @@ export const AppLayer = Layer.mergeAll(
   DatabaseLive,
   SocketIOLive(io),
   ScoreboardServiceLive,
-  ScoreboardControllerImpl,
+  ScoreboardControllerLive,
 );
 
 server.listen(process.env.PORT!, () => {

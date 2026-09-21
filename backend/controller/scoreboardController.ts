@@ -1,14 +1,13 @@
 import { Context, Effect, Layer } from "effect";
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
+import { AppLayer } from "..";
 import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
 import {
   ScoreboardService,
   ScoreboardServiceLive,
   type ScoreboardServiceInterface,
 } from "../service/scoreboardService";
-import { join } from "node:path";
-import { AppLayer } from "..";
 
 export type ScoreboardControllerInterface = {
   readonly createScoreboard: (
@@ -82,7 +81,7 @@ const joinScoreboard =
       res.status(StatusCodes.OK).json(scoreboard);
     });
 
-export const ScoreboardControllerImpl = Layer.effect(
+export const ScoreboardControllerLive = Layer.effect(
   ScoreboardController,
   Effect.gen(function* () {
     const scoreboardService = yield* ScoreboardService;
@@ -96,4 +95,4 @@ export const ScoreboardControllerImpl = Layer.effect(
       joinScoreboard: joinScoreboard(scoreboardService),
     };
   }),
-);
+).pipe(Layer.provide(ScoreboardServiceLive));
