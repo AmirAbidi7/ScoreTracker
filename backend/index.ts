@@ -7,7 +7,7 @@ import { SocketIOLive } from "./config/websocket";
 import { ScoreboardServiceLive } from "./service/scoreboardService";
 import { ScoreboardControllerLive } from "./controller/scoreboardController";
 
-const app = express();
+export const app = express();
 const server = createServer(app);
 const io = new Server(server);
 

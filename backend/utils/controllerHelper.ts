@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import type { ApiError } from "../errors/errors";
 import type { Response } from "express";
 
-const runController = (effect: Effect.Effect<void, ApiError>, res: Response) =>
+export const runController = (effect: Effect.Effect<void, ApiError>, res: Response) =>
   Effect.runPromise(
     effect.pipe(
       Effect.catchTags({

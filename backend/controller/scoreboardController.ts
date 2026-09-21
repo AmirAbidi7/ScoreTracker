@@ -1,29 +1,38 @@
 import { Context, Effect, Layer } from "effect";
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import { AppLayer } from "..";
 import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
 import {
   ScoreboardService,
   ScoreboardServiceLive,
   type ScoreboardServiceInterface,
 } from "../service/scoreboardService";
+import type { ApiError } from "../errors/errors";
 
 export type ScoreboardControllerInterface = {
   readonly createScoreboard: (
     req: Request<{}, {}, { scoreboard: ScoreboardCreateRequest }>,
     res: Response,
-  ) => void;
-  readonly getScoreboard: (req: Request<{ id: string }>, res: Response) => void;
-  readonly getScoreboards: (req: Request, res: Response) => void;
+  ) => Effect.Effect<void, ApiError>;
+  readonly getScoreboard: (
+    req: Request<{ id: string }>,
+    res: Response,
+  ) => Effect.Effect<void, ApiError>;
+  readonly getScoreboards: (req: Request, res: Response) => Effect.Effect<void, ApiError>;
   readonly updateScoreboard: (
     req: Request<{}, {}, { scoreboard: ScoreboardDTO }>,
     res: Response,
-  ) => void;
-  readonly deleteScoreboard: (req: Request<{ id: string }>, res: Response) => void;
-  readonly joinScoreboard: (req: Request<{ code: string }>, res: Response) => void;
+  ) => Effect.Effect<void, ApiError>;
+  readonly deleteScoreboard: (
+    req: Request<{ id: string }>,
+    res: Response,
+  ) => Effect.Effect<void, ApiError>;
+  readonly joinScoreboard: (
+    req: Request<{ code: string }>,
+    res: Response,
+  ) => Effect.Effect<void, ApiError>;
 };
-class ScoreboardController extends Context.Service<
+export class ScoreboardController extends Context.Service<
   ScoreboardController,
   ScoreboardControllerInterface
 >()("ScoreboardController") {}
@@ -34,28 +43,21 @@ const createScoreboard =
     Effect.gen(function* () {
       const scoreboard = yield* scoreboardService.createScoreboard(req.body.scoreboard);
       res.status(StatusCodes.CREATED).json(scoreboard);
-    }).pipe(
-      Effect.catchTags({
-        InternalServerError: (err) => Effect.sync(() => res.status(err.code).json(err.message)),
-      }),
-    );
+    });
 
 const getScoreboard =
   (scoreboardService: ScoreboardServiceInterface) =>
-  (req: Request<{ id: string }>, res: Response) => {
+  (req: Request<{ id: string }>, res: Response) =>
     Effect.gen(function* () {
       const scoreboard = yield* scoreboardService.getScoreboard(req.params.id);
       res.status(StatusCodes.OK).json(scoreboard);
     });
-  };
-
 const getScoreboards =
-  (scoreboardService: ScoreboardServiceInterface) => (req: Request, res: Response) => {
+  (scoreboardService: ScoreboardServiceInterface) => (req: Request, res: Response) =>
     Effect.gen(function* () {
       const scoreboards = yield* scoreboardService.getScoreboards();
       res.status(StatusCodes.OK).json(scoreboards);
     });
-  };
 
 const updateScoreboard =
   (scoreboardService: ScoreboardServiceInterface) =>
