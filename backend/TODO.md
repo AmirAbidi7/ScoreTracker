@@ -1,9 +1,9 @@
 - [x] Set up the websocket connection
-- [] Set up basic REST for scoreboard currently:
-  - [] Create a new scoreboard
-  - [] Update a new scoreboard (Delete players, or whatevs)
-  - [] Delete a scoreboard
-  - [] Fetch the current scoreboard (or join an existing one)
-  - [] Fetch all scoreboards (Will be by id next time)
+- [x] Set up basic REST for scoreboard currently:
+  - [x] Create a new scoreboard
+  - [x] Update a new scoreboard (Delete players, or whatevs)
+  - [x] Delete a scoreboard
+  - [x] Fetch the current scoreboard (or join an existing one)
+  - [x] Fetch all scoreboards (Will be by id next time)
 
 - [] Sync scoreboard to websocket
