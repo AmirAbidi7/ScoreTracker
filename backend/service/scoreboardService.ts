@@ -5,23 +5,25 @@ import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDT
 import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
 
-class ScoreboardService extends Context.Service<
+export type ScoreboardServiceInterface = {
+  readonly createScoreboard: (
+    scoreboardRequest: ScoreboardCreateRequest,
+  ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
+  readonly getScoreboard: (id: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
+  readonly getScoreboards: () => Effect.Effect<ScoreboardDTO[], InternalServerError>;
+  readonly updateScoreboard: (
+    Scoreboard: ScoreboardDTO,
+  ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
+  readonly deleteScoreboard: (scoreboardId: string) => Effect.Effect<string, InternalServerError>;
+  readonly joinScoreboard: (code: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
+};
+
+export class ScoreboardService extends Context.Service<
   ScoreboardService,
-  {
-    readonly createScoreboard: (
-      scoreboardRequest: ScoreboardCreateRequest,
-    ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
-    readonly getScoreboard: (id: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
-    readonly getScoreboards: () => Effect.Effect<ScoreboardDTO[], InternalServerError>;
-    readonly updateScoreboard: (
-      Scoreboard: ScoreboardDTO,
-    ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
-    readonly deleteScoreboard: (scoreboardId: string) => Effect.Effect<string, InternalServerError>;
-    readonly joinScoreboard: (code: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
-  }
+  ScoreboardServiceInterface
 >()("ScoreboardService") {}
 
-const ScoreboardServiceLive = Layer.effect(
+export const ScoreboardServiceLive = Layer.effect(
   ScoreboardService,
   Effect.gen(function* () {
     const db = yield* Database;
