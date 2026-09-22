@@ -1,34 +1,48 @@
-# dependencies (bun install)
-node_modules
+# dependencies
+node_modules/
+.bun/
+bun-error.log
 
-# output
-out
-dist
-*.tgz
-
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
+# build output
+dist/
+out/
+build/
+coverage/
 *.tsbuildinfo
+*.js.map
 
-# IntelliJ based IDEs
-.idea
+# env - keep example tracked
+.env
+.env.*
+!.env.example
 
-# Finder (MacOS) folder config
+# logs / debug
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnp.*
+.pnpm-debug.*
+
+# drizzle / db local
+*.db
+*.sqlite
+*.sqlite-journal
+drizzle/*.log
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.vim/
+
+# misc
+.cache/
+.tmp/
+.temp/

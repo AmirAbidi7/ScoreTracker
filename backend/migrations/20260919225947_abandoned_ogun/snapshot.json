@@ -1,0 +1,92 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "0aa6c17b-110c-4a25-b9e1-e5d37716c78e",
+  "prevIds": [
+    "13fb2759-0ed9-4d49-a412-0b2671baaec5"
+  ],
+  "ddl": [
+    {
+      "isRlsEnabled": false,
+      "name": "scoreboards",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "varchar(255)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "gameName",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'[]'",
+      "generated": null,
+      "identity": null,
+      "name": "players",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "creationTime",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updateTime",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "scoreboards_pkey",
+      "schema": "public",
+      "table": "scoreboards",
+      "entityType": "pks"
+    }
+  ],
+  "renames": []
+}

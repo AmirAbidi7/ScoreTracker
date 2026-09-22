@@ -1,0 +1,1 @@
+ALTER TABLE "scoreboards" ALTER COLUMN "players" SET NOT NULL;

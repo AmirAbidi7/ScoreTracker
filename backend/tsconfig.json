@@ -1,17 +1,4 @@
 {
-  "include": [
-    "index.ts",
-    "drizzle.config.ts",
-    "config/**/*.ts",
-    "controller/**/*.ts",
-    "dto/**/*.ts",
-    "middleware/**/*.ts",
-    "models/**/*.ts",
-    "routes/**/*.ts",
-    "service/**/*.ts",
-    "utils/**/*.ts"
-  ],
-  "exclude": ["node_modules", "migrations", "dist", "out", "coverage", "*.tsbuildinfo"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],

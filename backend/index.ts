@@ -1,11 +1,15 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { Router } from "express";
+import { app, server } from "./app";
+import { scoreboardRouter } from "./routes/scoreboardController";
 
-const app: Express = express();
+const router = Router();
 
-app.get("/", (req: Request, res: Response) => {
-  res.send("Hello From Express!");
-});
+app.use(express.json());
 
-app.listen(3000, () => {
+app.use("/api", router);
+
+router.use(scoreboardRouter);
+
+server.listen(process.env.PORT!, () => {
   console.log("App listening on port 3000");
 });

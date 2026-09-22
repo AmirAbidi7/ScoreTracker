@@ -1,0 +1,116 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "69111518-92e7-482f-b8bd-a447431c1bc5",
+  "prevIds": [
+    "0aa6c17b-110c-4a25-b9e1-e5d37716c78e"
+  ],
+  "ddl": [
+    {
+      "isRlsEnabled": false,
+      "name": "scoreboards",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "varchar(255)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "gameName",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'[]'",
+      "generated": null,
+      "identity": null,
+      "name": "players",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "creationTime",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updateTime",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "type": "varchar(6)",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "scoreboards"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "scoreboards_pkey",
+      "schema": "public",
+      "table": "scoreboards",
+      "entityType": "pks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "code"
+      ],
+      "nullsNotDistinct": false,
+      "name": "scoreboards_code_key",
+      "schema": "public",
+      "table": "scoreboards",
+      "entityType": "uniques"
+    }
+  ],
+  "renames": []
+}
