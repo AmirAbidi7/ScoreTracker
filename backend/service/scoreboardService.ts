@@ -10,15 +10,19 @@ export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
     scoreboardRequest: ScoreboardCreateRequest,
   ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
-  readonly getScoreboard: (id: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
+  readonly getScoreboard: (
+    id: string,
+  ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError>;
   readonly getScoreboards: () => Effect.Effect<ScoreboardDTO[], InternalServerError>;
   readonly updateScoreboard: (
     Scoreboard: ScoreboardDTO,
-  ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
+  ) => Effect.Effect<ScoreboardDTO, InternalServerError | NotFoundError>;
   readonly deleteScoreboard: (
     scoreboardId: string,
   ) => Effect.Effect<string, InternalServerError | NotFoundError>;
-  readonly joinScoreboard: (code: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
+  readonly joinScoreboard: (
+    code: string,
+  ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError>;
 };
 
 export class ScoreboardService extends Context.Service<
@@ -47,12 +51,15 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
     });
 
     const scoreboard = scoreboards[0];
+    if (!scoreboard) {
+      return yield* Effect.fail(new InternalServerError({ message: `Internal Server Error` }));
+    }
 
     const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard!.id,
-      gameName: scoreboard!.gameName,
-      players: scoreboard!.players,
-      code: scoreboard!.code,
+      id: scoreboard.id,
+      gameName: scoreboard.gameName,
+      players: scoreboard.players,
+      code: scoreboard.code,
     };
     return scoreboardDTO;
   });
@@ -62,14 +69,14 @@ const getScoreboard = (db: Db) => (id: string) =>
     const scoreboards = yield* Effect.tryPromise({
       try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
       catch: () =>
-        new NotFoundError({
-          message: `Couldn't find a scoreboard with that id!`,
+        new InternalServerError({
+          message: `Internal Server Error`,
         }),
     });
     const scoreboard = scoreboards[0];
 
     if (!scoreboard) {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new NotFoundError({
           message: `Couldn't find a scoreboard with id:${id}`,
         }),
@@ -77,10 +84,10 @@ const getScoreboard = (db: Db) => (id: string) =>
     }
 
     const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard!.id,
-      gameName: scoreboard!.gameName,
-      players: scoreboard!.players,
-      code: scoreboard!.code,
+      id: scoreboard.id,
+      gameName: scoreboard.gameName,
+      players: scoreboard.players,
+      code: scoreboard.code,
     };
     return scoreboardDTO;
   });
@@ -104,20 +111,28 @@ const getScoreboards = (db: Db) => () =>
 
 const deleteScoreboard = (db: Db) => (id: string) =>
   Effect.gen(function* () {
-    const scoreboard = yield* Effect.tryPromise({
-      try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
-      catch: () => new NotFoundError({ message: `scoreboard with id ${id} not found!` }),
-    });
-    yield* Effect.tryPromise({
-      try: () => db.delete(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
+    const values = yield* Effect.tryPromise({
+      try: () =>
+        db.delete(scoreboardsTable).where(eq(scoreboardsTable.id, id)).returning({
+          code: scoreboardsTable.code,
+        }),
       catch: () => new InternalServerError({ message: `Internal Server Error` }),
     });
-    return scoreboard[0]!.code;
+
+    const value = values[0];
+
+    if (!value) {
+      return yield* Effect.fail(
+        new NotFoundError({ message: `scoreboard with id:${id} not found` }),
+      );
+    }
+
+    return value.code;
   });
 
 const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
   Effect.gen(function* () {
-    const newScoreboard = yield* Effect.tryPromise({
+    const newScoreboards = yield* Effect.tryPromise({
       try: () =>
         db
           .update(scoreboardsTable)
@@ -133,12 +148,21 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
           }),
       catch: () => new InternalServerError({ message: `Internal Server Error` }),
     });
+    const newScoreboard = newScoreboards[0];
+
+    if (!newScoreboard) {
+      return yield* Effect.fail(
+        new NotFoundError({
+          message: `Couldn't find a scoreboard with id:${scoreboard.id}`,
+        }),
+      );
+    }
 
     const scoreboardDTO: ScoreboardDTO = {
-      id: newScoreboard[0]!.id,
-      gameName: newScoreboard[0]!.gameName,
-      players: newScoreboard[0]!.players,
-      code: newScoreboard[0]!.code,
+      id: newScoreboard.id,
+      gameName: newScoreboard.gameName,
+      players: newScoreboard.players,
+      code: newScoreboard.code,
     };
 
     return scoreboardDTO;
@@ -149,18 +173,26 @@ const joinScoreboard = (db: Db) => (code: string) =>
     const scoreboards = yield* Effect.tryPromise({
       try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.code, code)),
       catch: () =>
-        new NotFoundError({
-          message: `Couldn't find scoreboard with code:${code}, please verify the code before entering it next time!`,
+        new InternalServerError({
+          message: `Internal Server Error`,
         }),
     });
 
     const scoreboard = scoreboards[0];
 
+    if (!scoreboard) {
+      return yield* Effect.fail(
+        new NotFoundError({
+          message: `scoreboard with code:${code} Not found!`,
+        }),
+      );
+    }
+
     const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard!.id,
-      gameName: scoreboard!.gameName,
-      players: scoreboard!.players,
-      code: scoreboard!.code,
+      id: scoreboard.id,
+      gameName: scoreboard.gameName,
+      players: scoreboard.players,
+      code: scoreboard.code,
     };
     return scoreboardDTO;
   });
