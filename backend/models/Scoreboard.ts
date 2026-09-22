@@ -11,7 +11,9 @@ export const scoreboardsTable = pgTable("scoreboards", {
   gameName: varchar({ length: 255 }).notNull(),
   players: jsonb().$type<Player[]>().notNull().default([]),
   creationTime: timestamp({ withTimezone: true }).defaultNow(),
-  updateTime: timestamp({ withTimezone: true }).defaultNow(),
+  updateTime: timestamp({ withTimezone: true })
+    .defaultNow()
+    .$onUpdate(() => new Date()),
   code: varchar({ length: 6 }).unique().notNull(),
 });
 

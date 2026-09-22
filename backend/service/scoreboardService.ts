@@ -5,6 +5,7 @@ import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDT
 import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
 import { generateCode } from "../utils/generateCode";
+import { time } from "effect/Console";
 
 export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
