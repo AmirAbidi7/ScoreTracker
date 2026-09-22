@@ -1,22 +1,14 @@
-import { Layer } from "effect";
-import express from "express";
-import { createServer } from "http";
-import { Server } from "socket.io";
-import { DatabaseLive } from "./config/db";
-import { SocketIOLive } from "./config/websocket";
-import { ScoreboardServiceLive } from "./service/scoreboardService";
-import { ScoreboardControllerLive } from "./controller/scoreboardController";
+import express, { Router } from "express";
+import { app, server } from "./app";
+import { scoreboardRouter } from "./routes/scoreboardController";
 
-export const app = express();
-const server = createServer(app);
-const io = new Server(server);
+const router = Router();
 
-export const AppLayer = Layer.mergeAll(
-  DatabaseLive,
-  SocketIOLive(io),
-  ScoreboardServiceLive,
-  ScoreboardControllerLive,
-);
+app.use(express.json());
+
+app.use("/api", router);
+
+router.use(scoreboardRouter);
 
 server.listen(process.env.PORT!, () => {
   console.log("App listening on port 3000");

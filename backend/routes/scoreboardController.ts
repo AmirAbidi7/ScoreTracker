@@ -1,9 +1,9 @@
 import { Effect } from "effect";
-import type { Request, Response } from "express";
-import { app, AppLayer } from "..";
+import { Router, type Request, type Response } from "express";
 import { ScoreboardController } from "../controller/scoreboardController";
-import { runController } from "../utils/controllerHelper";
 import type { ScoreboardDTO } from "../dto/ScoreboardDTO";
+import { runController } from "../utils/controllerHelper";
+import { AppLayer } from "../utils/layers";
 
 const scoreboardController = Effect.runSync(
   Effect.gen(function* () {
@@ -11,7 +11,7 @@ const scoreboardController = Effect.runSync(
   }).pipe(Effect.provide(AppLayer)),
 );
 
-const scoreboardRouter = app.router;
+export const scoreboardRouter = Router();
 
 scoreboardRouter
   .route("/scoreboard")
@@ -23,13 +23,13 @@ scoreboardRouter
   )
   .put((req: Request<{}, {}, { scoreboard: ScoreboardDTO }>, res: Response) =>
     runController(scoreboardController.updateScoreboard(req, res), res),
-  )
-  .delete((req: Request<{ id: string }>, res: Response) =>
-    runController(scoreboardController.deleteScoreboard(req, res), res),
   );
 
 scoreboardRouter
   .route("/scoreboard/:id")
   .get((req: Request<{ id: string }>, res: Response) =>
     runController(scoreboardController.getScoreboard(req, res), res),
+  )
+  .delete((req: Request<{ id: string }>, res: Response) =>
+    runController(scoreboardController.deleteScoreboard(req, res), res),
   );

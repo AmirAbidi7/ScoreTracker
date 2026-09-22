@@ -8,5 +8,6 @@ export interface ScoreboardCreateRequest {
 export interface ScoreboardDTO {
   id: string;
   gameName: string;
+  code: string;
   players: Player[];
 }

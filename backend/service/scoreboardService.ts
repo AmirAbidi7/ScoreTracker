@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
-import { Context, Effect, Layer, Schedule } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { Database, DatabaseLive, type Db } from "../config/db";
 import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
 import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
+import { generateCode } from "../utils/generateCode";
 
 export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
@@ -14,7 +15,9 @@ export type ScoreboardServiceInterface = {
   readonly updateScoreboard: (
     Scoreboard: ScoreboardDTO,
   ) => Effect.Effect<ScoreboardDTO, InternalServerError>;
-  readonly deleteScoreboard: (scoreboardId: string) => Effect.Effect<string, InternalServerError>;
+  readonly deleteScoreboard: (
+    scoreboardId: string,
+  ) => Effect.Effect<string, InternalServerError | NotFoundError>;
   readonly joinScoreboard: (code: string) => Effect.Effect<ScoreboardDTO, NotFoundError>;
 };
 
@@ -32,11 +35,13 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
           .values({
             id: scoreboardReq.id,
             gameName: scoreboardReq.gameName,
+            code: generateCode(),
           })
           .returning({
             id: scoreboardsTable.id,
             gameName: scoreboardsTable.gameName,
             players: scoreboardsTable.players,
+            code: scoreboardsTable.code,
           }),
       catch: () => new InternalServerError({ message: "Internal Server Error" }),
     });
@@ -47,6 +52,7 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
       id: scoreboard!.id,
       gameName: scoreboard!.gameName,
       players: scoreboard!.players,
+      code: scoreboard!.code,
     };
     return scoreboardDTO;
   });
@@ -74,6 +80,7 @@ const getScoreboard = (db: Db) => (id: string) =>
       id: scoreboard!.id,
       gameName: scoreboard!.gameName,
       players: scoreboard!.players,
+      code: scoreboard!.code,
     };
     return scoreboardDTO;
   });
@@ -89,6 +96,7 @@ const getScoreboards = (db: Db) => () =>
       gameName: scoreboard.gameName,
       id: scoreboard.id,
       players: scoreboard.players,
+      code: scoreboard.code,
     }));
 
     return scoreboardsDTO;
@@ -96,11 +104,15 @@ const getScoreboards = (db: Db) => () =>
 
 const deleteScoreboard = (db: Db) => (id: string) =>
   Effect.gen(function* () {
+    const scoreboard = yield* Effect.tryPromise({
+      try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
+      catch: () => new NotFoundError({ message: `scoreboard with id ${id} not found!` }),
+    });
     yield* Effect.tryPromise({
       try: () => db.delete(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
       catch: () => new InternalServerError({ message: `Internal Server Error` }),
     });
-    return "Scoreboard Deleted successfully!";
+    return scoreboard[0]!.code;
   });
 
 const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
@@ -117,6 +129,7 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
             id: scoreboardsTable.id,
             gameName: scoreboardsTable.gameName,
             players: scoreboardsTable.players,
+            code: scoreboardsTable.code,
           }),
       catch: () => new InternalServerError({ message: `Internal Server Error` }),
     });
@@ -125,6 +138,7 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
       id: newScoreboard[0]!.id,
       gameName: newScoreboard[0]!.gameName,
       players: newScoreboard[0]!.players,
+      code: newScoreboard[0]!.code,
     };
 
     return scoreboardDTO;
@@ -146,6 +160,7 @@ const joinScoreboard = (db: Db) => (code: string) =>
       id: scoreboard!.id,
       gameName: scoreboard!.gameName,
       players: scoreboard!.players,
+      code: scoreboard!.code,
     };
     return scoreboardDTO;
   });

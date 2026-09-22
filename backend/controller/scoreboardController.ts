@@ -2,12 +2,17 @@ import { Context, Effect, Layer } from "effect";
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
+import type { ApiError } from "../errors/errors";
 import {
   ScoreboardService,
   ScoreboardServiceLive,
   type ScoreboardServiceInterface,
 } from "../service/scoreboardService";
-import type { ApiError } from "../errors/errors";
+import {
+  ScoreboardSocket,
+  ScoreboardSocketLive,
+  type ScoreboardSocketInterface,
+} from "../service/scoreboardSocket";
 
 export type ScoreboardControllerInterface = {
   readonly createScoreboard: (
@@ -60,19 +65,21 @@ const getScoreboards =
     });
 
 const updateScoreboard =
-  (scoreboardService: ScoreboardServiceInterface) =>
+  (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
   (req: Request<{}, {}, { scoreboard: ScoreboardDTO }>, res: Response) =>
     Effect.gen(function* () {
       const scoreboard = yield* scoreboardService.updateScoreboard(req.body.scoreboard);
+      yield* scoreboardSocket.updateScoreboard(scoreboard);
       res.status(StatusCodes.OK).json(scoreboard);
     });
 
 const deleteScoreboard =
-  (scoreboardService: ScoreboardServiceInterface) =>
+  (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
   (req: Request<{ id: string }>, res: Response) =>
     Effect.gen(function* () {
-      const message = yield* scoreboardService.deleteScoreboard(req.params.id);
-      res.status(StatusCodes.OK).json(message);
+      const code = yield* scoreboardService.deleteScoreboard(req.params.id);
+      yield* scoreboardSocket.disconnectFromScoreboard(code);
+      res.status(StatusCodes.OK).json("Scoreboard deleted successfully!");
     });
 
 const joinScoreboard =
@@ -87,14 +94,15 @@ export const ScoreboardControllerLive = Layer.effect(
   ScoreboardController,
   Effect.gen(function* () {
     const scoreboardService = yield* ScoreboardService;
+    const scoreboardSocket = yield* ScoreboardSocket;
 
     return {
       createScoreboard: createScoreboard(scoreboardService),
       getScoreboard: getScoreboard(scoreboardService),
       getScoreboards: getScoreboards(scoreboardService),
-      updateScoreboard: updateScoreboard(scoreboardService),
-      deleteScoreboard: deleteScoreboard(scoreboardService),
+      updateScoreboard: updateScoreboard(scoreboardService, scoreboardSocket),
+      deleteScoreboard: deleteScoreboard(scoreboardService, scoreboardSocket),
       joinScoreboard: joinScoreboard(scoreboardService),
     };
   }),
-).pipe(Layer.provide(ScoreboardServiceLive));
+).pipe(Layer.provide(ScoreboardServiceLive), Layer.provide(ScoreboardSocketLive));

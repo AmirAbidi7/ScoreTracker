@@ -12,7 +12,7 @@ export const scoreboardsTable = pgTable("scoreboards", {
   players: jsonb().$type<Player[]>().notNull().default([]),
   creationTime: timestamp({ withTimezone: true }).defaultNow(),
   updateTime: timestamp({ withTimezone: true }).defaultNow(),
-  code: varchar({ length: 6 }).unique(),
+  code: varchar({ length: 6 }).unique().notNull(),
 });
 
 export type Scoreboard = typeof scoreboardsTable;
