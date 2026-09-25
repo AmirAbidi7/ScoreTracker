@@ -25,6 +25,15 @@ scoreboardRouter
     runController(scoreboardController.updateScoreboard(req, res), res),
   );
 
+// Registered before `/:id` so a code can never be read as an id. The segment
+// counts differ, so Express would not match them anyway, but the explicit
+// order makes the intent obvious to the next reader.
+scoreboardRouter
+  .route("/scoreboard/join/:code")
+  .get((req: Request<{ code: string }>, res: Response) =>
+    runController(scoreboardController.joinScoreboard(req, res), res),
+  );
+
 scoreboardRouter
   .route("/scoreboard/:id")
   .get((req: Request<{ id: string }>, res: Response) =>
