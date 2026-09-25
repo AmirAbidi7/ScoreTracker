@@ -7,6 +7,39 @@ import { scoreboardsTable } from "../models/Scoreboard";
 import { generateCode } from "../utils/generateCode";
 import { time } from "effect/Console";
 
+/**
+ * Row shape produced by {@link boardColumns}. Derived from the schema via
+ * `$inferSelect` — `typeof scoreboardsTable` types its properties as column
+ * objects, not row data — and narrowed to the projected columns so every
+ * partial select/returning result is assignable to it.
+ */
+type ScoreboardRow = Pick<
+  typeof scoreboardsTable.$inferSelect,
+  "id" | "gameName" | "code" | "players" | "updateTime"
+>;
+
+/**
+ * Single mapping point from a database row to the wire DTO. The `updateTime`
+ * column is nullable in the schema but always populated by `defaultNow()`;
+ * the `?? new Date(0)` keeps a stray null from producing an unorderable value.
+ */
+export const toScoreboardDTO = (row: ScoreboardRow): ScoreboardDTO => ({
+  id: row.id,
+  gameName: row.gameName,
+  code: row.code,
+  players: row.players,
+  updateTime: (row.updateTime ?? new Date(0)).toISOString(),
+});
+
+/** The exact projection used by every read that returns a board. */
+const boardColumns = {
+  id: scoreboardsTable.id,
+  gameName: scoreboardsTable.gameName,
+  players: scoreboardsTable.players,
+  code: scoreboardsTable.code,
+  updateTime: scoreboardsTable.updateTime,
+};
+
 export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
     scoreboardRequest: ScoreboardCreateRequest,
@@ -22,6 +55,9 @@ export type ScoreboardServiceInterface = {
     scoreboardId: string,
   ) => Effect.Effect<string, InternalServerError | NotFoundError>;
   readonly joinScoreboard: (
+    code: string,
+  ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError>;
+  readonly getScoreboardByCode: (
     code: string,
   ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError>;
 };
@@ -42,12 +78,7 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
             gameName: scoreboardReq.gameName,
             code: generateCode(),
           })
-          .returning({
-            id: scoreboardsTable.id,
-            gameName: scoreboardsTable.gameName,
-            players: scoreboardsTable.players,
-            code: scoreboardsTable.code,
-          }),
+          .returning(boardColumns),
       catch: () => new InternalServerError({ message: "Internal Server Error" }),
     });
 
@@ -56,19 +87,14 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
       return yield* Effect.fail(new InternalServerError({ message: `Internal Server Error` }));
     }
 
-    const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard.id,
-      gameName: scoreboard.gameName,
-      players: scoreboard.players,
-      code: scoreboard.code,
-    };
-    return scoreboardDTO;
+    return toScoreboardDTO(scoreboard);
   });
 
 const getScoreboard = (db: Db) => (id: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
-      try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
+      try: () =>
+        db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
       catch: () =>
         new InternalServerError({
           message: `Internal Server Error`,
@@ -84,28 +110,17 @@ const getScoreboard = (db: Db) => (id: string) =>
       );
     }
 
-    const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard.id,
-      gameName: scoreboard.gameName,
-      players: scoreboard.players,
-      code: scoreboard.code,
-    };
-    return scoreboardDTO;
+    return toScoreboardDTO(scoreboard);
   });
 
 const getScoreboards = (db: Db) => () =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
-      try: () => db.select().from(scoreboardsTable),
+      try: () => db.select(boardColumns).from(scoreboardsTable),
       catch: () => new InternalServerError({ message: `Error fetching all scoreboards!` }),
     });
 
-    const scoreboardsDTO: ScoreboardDTO[] = scoreboards.map((scoreboard) => ({
-      gameName: scoreboard.gameName,
-      id: scoreboard.id,
-      players: scoreboard.players,
-      code: scoreboard.code,
-    }));
+    const scoreboardsDTO: ScoreboardDTO[] = scoreboards.map(toScoreboardDTO);
 
     return scoreboardsDTO;
   });
@@ -133,20 +148,17 @@ const deleteScoreboard = (db: Db) => (id: string) =>
 
 const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
   Effect.gen(function* () {
+    // The client doesn't author the ordering token: drop `updateTime` from the
+    // write so the column's `$onUpdate` bumps it to server time instead of
+    // echoing a stale client value that other clients would then discard.
+    const { updateTime: _updateTime, ...updatable } = scoreboard;
     const newScoreboards = yield* Effect.tryPromise({
       try: () =>
         db
           .update(scoreboardsTable)
-          .set({
-            ...scoreboard,
-          })
+          .set({ ...updatable })
           .where(eq(scoreboardsTable.id, scoreboard.id))
-          .returning({
-            id: scoreboardsTable.id,
-            gameName: scoreboardsTable.gameName,
-            players: scoreboardsTable.players,
-            code: scoreboardsTable.code,
-          }),
+          .returning(boardColumns),
       catch: () => new InternalServerError({ message: `Internal Server Error` }),
     });
     const newScoreboard = newScoreboards[0];
@@ -159,20 +171,14 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
       );
     }
 
-    const scoreboardDTO: ScoreboardDTO = {
-      id: newScoreboard.id,
-      gameName: newScoreboard.gameName,
-      players: newScoreboard.players,
-      code: newScoreboard.code,
-    };
-
-    return scoreboardDTO;
+    return toScoreboardDTO(newScoreboard);
   });
 
 const joinScoreboard = (db: Db) => (code: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
-      try: () => db.select().from(scoreboardsTable).where(eq(scoreboardsTable.code, code)),
+      try: () =>
+        db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.code, code)),
       catch: () =>
         new InternalServerError({
           message: `Internal Server Error`,
@@ -189,13 +195,26 @@ const joinScoreboard = (db: Db) => (code: string) =>
       );
     }
 
-    const scoreboardDTO: ScoreboardDTO = {
-      id: scoreboard.id,
-      gameName: scoreboard.gameName,
-      players: scoreboard.players,
-      code: scoreboard.code,
-    };
-    return scoreboardDTO;
+    return toScoreboardDTO(scoreboard);
+  });
+
+const getScoreboardByCode = (db: Db) => (code: string) =>
+  Effect.gen(function* () {
+    const scoreboards = yield* Effect.tryPromise({
+      try: () =>
+        db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.code, code)),
+      catch: () => new InternalServerError({ message: `Internal Server Error` }),
+    });
+
+    const scoreboard = scoreboards[0];
+
+    if (!scoreboard) {
+      return yield* Effect.fail(
+        new NotFoundError({ message: `scoreboard with code:${code} not found` }),
+      );
+    }
+
+    return toScoreboardDTO(scoreboard);
   });
 
 export const ScoreboardServiceLive = Layer.effect(
@@ -210,6 +229,7 @@ export const ScoreboardServiceLive = Layer.effect(
       updateScoreboard: updateScoreboard(db),
       deleteScoreboard: deleteScoreboard(db),
       joinScoreboard: joinScoreboard(db),
+      getScoreboardByCode: getScoreboardByCode(db),
     });
   }),
 ).pipe(Layer.provide(DatabaseLive));
