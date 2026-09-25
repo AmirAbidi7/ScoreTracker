@@ -6,4 +6,5 @@
   - [x] Fetch the current scoreboard (or join an existing one)
   - [x] Fetch all scoreboards (Will be by id next time)
 
-- [] Sync scoreboard to websocket
+- [x] Sync scoreboard to websocket
+- [x] Join a scoreboard by code over REST
