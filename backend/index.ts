@@ -1,6 +1,7 @@
 import express, { Router } from "express";
-import { app, server } from "./app";
+import { app, io, server } from "./app";
 import { scoreboardRouter } from "./routes/scoreboardController";
+import { registerScoreboardHandlers } from "./socket/scoreboardHandlers";
 
 const router = Router();
 
@@ -12,6 +13,8 @@ router.use(scoreboardRouter);
 
 const PORT = Number(process.env.PORT!) || 3000;
 
+registerScoreboardHandlers(io);
+
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("App listening on port 3000");
+  console.log(`App listening on port ${PORT}`);
 });
