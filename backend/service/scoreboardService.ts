@@ -174,30 +174,6 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
     return toScoreboardDTO(newScoreboard);
   });
 
-const joinScoreboard = (db: Db) => (code: string) =>
-  Effect.gen(function* () {
-    const scoreboards = yield* Effect.tryPromise({
-      try: () =>
-        db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.code, code)),
-      catch: () =>
-        new InternalServerError({
-          message: `Internal Server Error`,
-        }),
-    });
-
-    const scoreboard = scoreboards[0];
-
-    if (!scoreboard) {
-      return yield* Effect.fail(
-        new NotFoundError({
-          message: `scoreboard with code:${code} Not found!`,
-        }),
-      );
-    }
-
-    return toScoreboardDTO(scoreboard);
-  });
-
 const getScoreboardByCode = (db: Db) => (code: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
@@ -216,6 +192,9 @@ const getScoreboardByCode = (db: Db) => (code: string) =>
 
     return toScoreboardDTO(scoreboard);
   });
+
+// The join route's name for the same lookup by code.
+const joinScoreboard = getScoreboardByCode;
 
 export const ScoreboardServiceLive = Layer.effect(
   ScoreboardService,
