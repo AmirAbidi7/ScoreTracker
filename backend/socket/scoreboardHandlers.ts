@@ -117,10 +117,15 @@ export const registerScoreboardHandlers = (io: Server): void => {
           // Broadcast to the room, then ack the sender. The sender receives
           // both, which is harmless: identical payloads, and the client drops
           // anything not strictly newer than what it already holds.
-          Effect.runPromise(socketService.updateScoreboard(scoreboard)).catch(() => {
-            // A failed broadcast must not turn a successful intent into an
-            // error for the sender. Other clients resync on their next
-            // reconnect.
+          //
+          // A failed broadcast must not turn a successful intent into an
+          // error for the sender: the ack below already carries the
+          // authoritative board, so the sender is correct either way. Peers in
+          // the room are not, and nothing here repairs them — the board is
+          // persisted, so the next successful broadcast carries the state they
+          // missed. Logged loudly rather than swallowed.
+          Effect.runPromise(socketService.updateScoreboard(scoreboard)).catch((fatal: unknown) => {
+            console.error(`[scoreboard] broadcast to ${roomFor(scoreboard.code)} failed`, fatal);
           });
           respond({ ok: true, scoreboard });
         },
