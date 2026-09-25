@@ -26,4 +26,16 @@ export class InternalServerError extends Data.TaggedError("InternalServerError")
   readonly code = StatusCodes.INTERNAL_SERVER_ERROR;
 }
 
+/**
+ * Rejects an intent that parsed but cannot be applied to the board it targets —
+ * a player id that no longer exists, a blank name. Deliberately *not* part of
+ * {@link ApiError}: that union is the REST channel drained by `runController`'s
+ * exhaustive `catchTags`, and this error travels over the socket ack instead.
+ */
+export class InvalidIntentError extends Data.TaggedError("InvalidIntentError")<{
+  message: string;
+}> {
+  readonly code = StatusCodes.BAD_REQUEST;
+}
+
 export type ApiError = NotFoundError | UnauthorizedError | ValidationError | InternalServerError;
