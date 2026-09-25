@@ -5,6 +5,7 @@
     "": {
       "name": "backend",
       "dependencies": {
+        "cors": "^2.8.6",
         "dotenv": "^18.0.1",
         "drizzle-orm": "^1.0.0-rc.4",
         "effect": "^4.0.0-rc.116",
@@ -15,6 +16,7 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/cors": "^2.8.19",
         "@types/express": "^5.0.6",
         "@types/node": "^26.6.2",
         "@types/pg": "^8.23.1",
