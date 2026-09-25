@@ -10,6 +10,8 @@ app.use("/api", router);
 
 router.use(scoreboardRouter);
 
-server.listen(process.env.PORT!, () => {
+const PORT = Number(process.env.PORT!) || 3000;
+
+server.listen(PORT, "0.0.0.0", () => {
   console.log("App listening on port 3000");
 });
