@@ -163,6 +163,33 @@ describe("ApiClient", () => {
 
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error.status).toBe(200);
+    expect(error.message).toBe("Malformed response from server (status 200)");
+  });
+
+  test("a fetch that rejects with a non-Error is still an ApiClientError", async () => {
+    // Nothing guarantees `fetch` rejects with an Error; a polyfill or a test
+    // double may reject with a bare string, and the caller must still get the
+    // one error type.
+    const fetchImpl = jest.fn().mockRejectedValue("boom") as unknown as typeof fetch;
+
+    const error = (await captureError(makeClient(fetchImpl).listScoreboards())) as ApiClientError;
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error.status).toBe(0);
+    expect(error.message).toBe("Can't reach the server");
+  });
+
+  test("a path segment that cannot be encoded throws instead of leaking a URIError", () => {
+    // An unpaired surrogate, which `encodeURIComponent` rejects. The throw is
+    // synchronous — the method is not `async` — but it must still be the one
+    // error type rather than a raw `URIError`.
+    const fetchImpl = jest.fn().mockReturnValue(ok(board)) as unknown as typeof fetch;
+
+    expect(() => makeClient(fetchImpl).joinScoreboard("\uD800")).toThrow(ApiClientError);
+    expect(() => makeClient(fetchImpl).joinScoreboard("\uD800")).toThrow(
+      'Cannot build a request URL from "\\ud800"',
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   test("deleteScoreboard resolves undefined on a 204 and sends DELETE", async () => {

@@ -37,7 +37,12 @@ const host = (() => {
   }
 })();
 
-if (__DEV__ && Platform.OS !== "web") {
+// `process.env.NODE_ENV` is constant-folded by Expo CLI like any other static
+// `process.env.X` read, so `!== "test"` disappears from a production bundle. The
+// guard exists because jest-expo reports `Platform.OS` as "ios": every unit test
+// that imports a module reaching this file would otherwise print a 12-line
+// warning about a device that no test is running on, burying the real output.
+if (__DEV__ && process.env.NODE_ENV !== "test" && Platform.OS !== "web") {
   if (host === null) {
     // The more urgent of the two misconfigurations, and the one a set-but-empty
     // variable used to produce silently: `new URL("")` throws, so the old

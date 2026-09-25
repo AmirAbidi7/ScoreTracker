@@ -80,6 +80,10 @@ export class ApiClient {
    * required, but the column is `uuid().defaultRandom()` — a create without an
    * id makes drizzle emit `default` for that column and PostgreSQL generates the
    * UUID. Do not "fix" the type mismatch on this side by generating one here.
+   * `code` is missing for the same reason — `generateCode()` generates it on the
+   * server, and `ScoreboardCreateRequest` has no field for it at all. Anyone
+   * diffing that DTO against the frontend `Scoreboard` meets two fields this
+   * client declines to send, not one.
    */
   createScoreboard(gameName: string): Promise<Scoreboard> {
     return this.request<Scoreboard>("/api/scoreboard", {
@@ -89,11 +93,11 @@ export class ApiClient {
   }
 
   joinScoreboard(code: string): Promise<Scoreboard> {
-    return this.request<Scoreboard>(`/api/scoreboard/join/${encodeURIComponent(code)}`);
+    return this.request<Scoreboard>(`/api/scoreboard/join/${encodePathSegment(code)}`);
   }
 
   getScoreboard(id: string): Promise<Scoreboard> {
-    return this.request<Scoreboard>(`/api/scoreboard/${encodeURIComponent(id)}`);
+    return this.request<Scoreboard>(`/api/scoreboard/${encodePathSegment(id)}`);
   }
 
   listScoreboards(): Promise<Scoreboard[]> {
@@ -101,9 +105,27 @@ export class ApiClient {
   }
 
   deleteScoreboard(id: string): Promise<void> {
-    return this.request<void>(`/api/scoreboard/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return this.request<void>(`/api/scoreboard/${encodePathSegment(id)}`, { method: "DELETE" });
   }
 }
+
+/**
+ * `encodeURIComponent` throws a `URIError` on an unpaired surrogate, and that is
+ * reachable: a join code is typed into a text input, where a truncated character
+ * survives trimming and a length check. Left alone it would escape as a raw
+ * error from every method that puts a caller-supplied string in the path, so it
+ * is wrapped once here.
+ */
+const encodePathSegment = (value: string): string => {
+  try {
+    return encodeURIComponent(value);
+  } catch {
+    // `status: 0` because the request is never sent. The message, not the
+    // status, is what distinguishes this from a genuine transport failure —
+    // a UI that only branches on `isOffline` will mislabel it as "offline".
+    throw new ApiClientError(`Cannot build a request URL from ${JSON.stringify(value)}`, 0);
+  }
+};
 
 const readErrorMessage = async (response: Response): Promise<string> => {
   try {
