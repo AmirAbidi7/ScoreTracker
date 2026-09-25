@@ -24,8 +24,10 @@ export const tabs: AppTab[] = [
 ];
 
 export const scores: Scoreboard = {
-  id: 1,
+  id: "00000000-0000-4000-8000-000000000000",
   gameName: "Catan",
+  code: "ABC123",
+  updateTime: new Date(0).toISOString(),
   players: [
     {
       id: 1,
