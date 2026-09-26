@@ -158,8 +158,23 @@ export class ScoreboardService {
 
       connect_error: (error: Error) => {
         this.connected = false;
-        this.emit({ type: "error", message: messageOf(error) });
+        // The status first, and the reason second — deliberately, and the order
+        // is load-bearing.
+        //
+        // `scheduleReconnect` reports a status, and the store's `setStatus` clears
+        // `error` because a connection that came up is newer news than a failure
+        // that has stopped being true. Emitted the other way round — reason, then
+        // status, both in this same tick — that clearing landed immediately after
+        // and wiped the message before React could render it. Only the second and
+        // later failures survived, and only by accident: `scheduleReconnect`
+        // early-returns while a retry is armed, so those emit no status to be
+        // cleared by.
+        //
+        // This way the failure is the last word, and the next status change —
+        // `connected` on a successful reconnect — is what takes it away, which is
+        // the one moment it has genuinely stopped being true.
         this.scheduleReconnect();
+        this.emit({ type: "error", message: messageOf(error) });
       },
 
       "scoreboard:update": (board: Scoreboard) => {
