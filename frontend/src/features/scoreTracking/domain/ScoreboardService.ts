@@ -41,6 +41,20 @@ const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
+ * Awaits a promise and turns a rejection into a value, so one staleness check
+ * can gate both outcomes. A `try`/`catch` around the read would need that check
+ * repeated in each arm, and an arm that forgot it would commit a board the app
+ * has already moved on from.
+ */
+const settle = <T>(
+  promise: Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; message: string }> =>
+  promise.then(
+    (value) => ({ ok: true, value }),
+    (error: unknown) => ({ ok: false, message: messageOf(error) }),
+  );
+
+/**
  * Owns the REST client and the socket, and nothing else.
  *
  * Deliberately a plain class with no React in sight: it is constructed once as
@@ -176,17 +190,43 @@ export class ScoreboardService {
   private async resync(socket: SocketLike): Promise<void> {
     const board = this.current;
     if (!board) return;
+    const boardId = board.id;
 
-    let code = board.code;
-    try {
-      const fresh = await this.api.getScoreboard(board.id);
-      this.current = fresh;
-      code = fresh.code;
-      this.emit({ type: "board", board: fresh });
-    } catch (error) {
-      this.emit({ type: "error", message: messageOf(error) });
+    const read = await settle(this.api.getScoreboard(boardId));
+
+    // One gate on every commit below. See `stillTracking`.
+    if (!this.stillTracking(socket, boardId)) return;
+
+    if (read.ok) {
+      this.current = read.value;
+      this.emit({ type: "board", board: read.value });
+      joinRoom(socket, read.value.code);
+    } else {
+      this.emit({ type: "error", message: read.message });
+      joinRoom(socket, board.code);
     }
-    joinRoom(socket, code);
+  }
+
+  /**
+   * Whether a re-read started for `boardId` on `socket` is still worth applying.
+   *
+   * The re-read is an `await` away from committing, and in that window the board
+   * can be left, deleted, or replaced by another one. Committing anyway
+   * resurrects a board the user has moved on from, and in the worst case leaves
+   * `current` pointing at board A while the live socket sits in board B's room
+   * — `sendIntent` posts `current.code`, so that is a silent write to the wrong
+   * board rather than a visibly broken one.
+   *
+   * Both halves are needed and neither subsumes the other: `teardown` nulls the
+   * socket but leaves `current` in place, so the socket check is what rejects a
+   * leave or a delete; and entering another board installs a different socket
+   * over this service, so the id check is what stops a re-read for A being
+   * applied once B is the tracked board. A `scoreboard:update` for the same
+   * board keeps the id equal, which is intended — ordering out-of-arrival by
+   * `updateTime` is the reducer's job, not this layer's.
+   */
+  private stillTracking(socket: SocketLike, boardId: string): boolean {
+    return this.socket === socket && this.current?.id === boardId;
   }
 
   private scheduleReconnect(): void {
