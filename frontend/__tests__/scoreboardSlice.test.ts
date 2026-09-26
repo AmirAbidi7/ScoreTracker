@@ -228,12 +228,76 @@ describe("scoreboardSlice", () => {
     expect(reducer(initial, rejected).error).toBe("No such player");
   });
 
+  /**
+   * The real shape for a thunk that rejects with a falsy value: `payload` is the
+   * empty string, and RTK has put its own placeholder on `error.message` because
+   * there was no message to serialise. Storing either would show the user the
+   * word "Rejected", or a blank red banner — both worse than showing nothing.
+   */
+  test("a rejection with nothing to say is not answered with a placeholder", () => {
+    const rejected = {
+      type: "scoreboard/intent/rejected",
+      payload: "",
+      error: { message: "Rejected" },
+      meta: { rejectedWithValue: true, requestId: "request-4", arg: undefined },
+    };
+    expect(reducer(initial, rejected).error).toBeNull();
+  });
+
   test("a rejection with nothing to say leaves the previous error alone", () => {
-    // An empty red banner is the same silence as no banner, so there is no
-    // message and nothing is written.
     const silent = { type: "scoreboard/intent/rejected", payload: undefined, meta: {} };
     const withError = reducer(initial, setError("boom"));
     expect(reducer(withError, silent).error).toBe("boom");
+  });
+
+  /**
+   * The other half of a reported failure: it has to stop being reported once it
+   * stops being true. Nothing else clears `error` between two intents — the
+   * gateway reports a status only on connect, reconnect and disconnect — so
+   * without this a stale refusal sits on the board while a later `+` works.
+   */
+  test("a later intent that goes through clears the refusal", () => {
+    const refused = sendIntent.rejected(
+      new Error("No such player"),
+      "request-5",
+      { type: "addScore", playerId: 1, amount: 2 },
+    );
+    const afterRefusal = reducer(reducer(initial, applyBoard(board)), refused);
+    expect(afterRefusal.error).toBe("No such player");
+
+    const accepted = sendIntent.fulfilled(
+      later,
+      "request-6",
+      { type: "addScore", playerId: 1, amount: 2 },
+    );
+    const afterSuccess = reducer(afterRefusal, accepted);
+
+    expect(afterSuccess.error).toBeNull();
+    // The board does not travel on the fulfilled action: `sendIntent` dispatches
+    // `applyBoard` with the server's board before it resolves, and `applyBoard`'s
+    // ordering guard is what decides whether that board is newer. The case here
+    // only forgets the failure.
+    expect(afterSuccess.current).toEqual(board);
+    expect(reducer(afterSuccess, applyBoard(later)).current).toEqual(later);
+  });
+
+  test("a successful delete needs no case of its own to clear the error", () => {
+    // `deleteCurrentScoreboard` resets the board away on the way out, and the
+    // reset nulls `error`. Asserted here so a future `delete/fulfilled` case is
+    // recognised as redundant rather than added.
+    const refused = deleteCurrentScoreboard.rejected(
+      new Error("Bad gateway"),
+      "request-7",
+      undefined,
+    );
+    const afterRefusal = reducer(reducer(initial, applyBoard(board)), refused);
+    expect(afterRefusal.error).toBe("Bad gateway");
+
+    const deleted = reducer(
+      afterRefusal,
+      deleteCurrentScoreboard.fulfilled(undefined, "request-8", undefined),
+    );
+    expect(reducer(deleted, resetScoreboard()).error).toBeNull();
   });
 
   test("a rejection is cleared by the next status change, like any other error", () => {

@@ -445,6 +445,34 @@ describe("connection and error banners", () => {
     expect(screen.queryByTestId("pending-banner")).toBeNull();
     expect(store.getState().scoreboard.current).toEqual(board);
   });
+
+  /**
+   * A failure that has stopped being true has to stop being shown, or it becomes
+   * a line the user cannot dismiss. Nothing between two intents clears it — the
+   * gateway reports a status only on connect, reconnect and disconnect — so the
+   * next change going through is the only thing that can.
+   */
+  it("takes the refusal away once a later change goes through", async () => {
+    service.sendIntent.mockResolvedValueOnce({
+      ok: false,
+      code: 404,
+      message: "No such player",
+    });
+    const store = await renderPage((s) => {
+      s.dispatch(applyBoard(board));
+      s.dispatch(setStatus("connected"));
+    });
+
+    await fireEvent.press(screen.getByTestId("add-score-1"));
+    await screen.findByTestId("scoreboard-error");
+
+    service.sendIntent.mockResolvedValueOnce(scored(23));
+    await fireEvent.press(screen.getByTestId("add-score-1"));
+
+    await waitFor(() => expect(screen.queryByTestId("scoreboard-error")).toBeNull());
+    expect(screen.getByTestId("player-score-1")).toHaveTextContent("23");
+    expect(store.getState().scoreboard.error).toBeNull();
+  });
 });
 
 describe("deleting the game", () => {

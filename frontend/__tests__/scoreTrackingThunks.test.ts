@@ -407,6 +407,24 @@ describe("a rejection reaches the store, which is the only place it can be shown
     // The board still exists, so it is still the one on screen.
     expect(state(store).current).toEqual(board);
   });
+
+  it("stops reporting a refusal once a later intent goes through", async () => {
+    // Both halves through a real store, because the half that matters is the
+    // one nobody dispatches by hand: a user who is refused once, tries again,
+    // succeeds, and must not still be reading the first failure.
+    service.sendIntent
+      .mockResolvedValueOnce({ ok: false, code: 404, message: "No such player" })
+      .mockResolvedValueOnce({ ok: true, scoreboard: { ...board, players: [] } });
+    const store = makeStore();
+    store.dispatch(applyBoard(board));
+
+    await store.dispatch(sendIntent({ type: "addScore", playerId: 1, amount: 2 }));
+    expect(state(store).error).toBe("No such player");
+
+    await store.dispatch(sendIntent({ type: "addScore", playerId: 1, amount: 2 }));
+
+    expect(state(store).error).toBeNull();
+  });
 });
 
 describe("leaveScoreboard", () => {

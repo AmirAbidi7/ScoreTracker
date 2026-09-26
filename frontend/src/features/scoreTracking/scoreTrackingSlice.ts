@@ -6,30 +6,43 @@ import type { Scoreboard } from "./domain/Scoreboard";
 export type BoardsStatus = "idle" | "loading" | "ready" | "error";
 
 /**
- * The rejection types of the two thunks whose failure a user has to be told
- * about. Written out here rather than imported from `scoreTrackingThunks` —
- * see the note on `extraReducers` for why importing them is not an option.
+ * The outcome types this slice reacts to, from the two thunks whose failure a
+ * user has to be told about. Written out here rather than imported from
+ * `scoreTrackingThunks` — see the note on `extraReducers` for why importing them
+ * is not an option.
  */
+const INTENT_FULFILLED = "scoreboard/intent/fulfilled";
 const INTENT_REJECTED = "scoreboard/intent/rejected";
 const DELETE_REJECTED = "scoreboard/delete/rejected";
+
+/** A message is worth showing only if there is something in it. */
+const isAMessage = (candidate: unknown): candidate is string =>
+  typeof candidate === "string" && candidate.trim().length > 0;
 
 /**
  * What a rejected action has to say, or `null` when it says nothing.
  *
  * `rejectWithValue` — which every thunk here does — carries the reason in
  * `payload`. A thunk that *threw* instead carries none there and puts the reason
- * on `error.message`, so that is read too. Storing `action.payload` blindly would
- * put `undefined` into a `string | null` field, and the page's `error !== null`
- * check would then render an empty red banner: the same silence this case
- * exists to end, one layer down.
+ * on `error.message`, so that is read, and it is read second for a reason: RTK
+ * builds `error` as `miniSerializeError(error || "Rejected")`, so a payload that
+ * is present but empty leaves a *placeholder* on `error.message` rather than a
+ * real one. Falling through to it would answer a thunk's empty `rejectWithValue`
+ * with the word "Rejected" on the scoreboard.
+ *
+ * A payload that is present but says nothing is therefore answered with nothing
+ * at all, and the previous error is left as it was. Same for a message that is
+ * empty: storing `""` in a `string | null` field renders an empty red banner,
+ * which is the same silence this helper exists to prevent, one layer down.
  */
 const rejectionMessage = (action: {
   payload?: unknown;
   error?: { message?: string };
 }): string | null => {
-  if (typeof action.payload === "string") return action.payload;
-  if (typeof action.error?.message === "string") return action.error.message;
-  return null;
+  if (action.payload !== undefined) {
+    return isAMessage(action.payload) ? action.payload : null;
+  }
+  return isAMessage(action.error?.message) ? action.error.message : null;
 };
 
 export interface ScoreboardState {
@@ -134,20 +147,36 @@ const scoreboardSlice = createSlice({
    * failed delete is worse still: the user agreed to something irreversible,
    * watched the board stay, and was given no reason.
    *
+   * `intent/fulfilled` is here to stop a failure sticking. `error` is cleared
+   * nowhere else except `setStatus`, and the gateway reports a status only on
+   * connect, reconnect and disconnect — never per intent. So a refused `+4`
+   * would otherwise leave its red line on screen while a *later* `+4` moved the
+   * score, with nothing the user can do to clear it: a message that has stopped
+   * being true and cannot be dismissed. A change that went through is newer
+   * news about this board, which is the same rule `setStatus` already follows.
+   *
+   * `delete/fulfilled` gets no case, and needs none: a successful delete resets
+   * the whole board away, and `resetScoreboard` nulls `error` on its way out.
+   * A case there would be a second path to a state the reset already reaches.
+   *
    * The type strings are written out rather than imported from
    * `scoreTrackingThunks`, which is what would tie them to the action creators
    * that produce them. The thunks import this module, so importing them back
    * closes a cycle whose evaluation order then decides whether `addCase` sees a
    * defined creator or one still in its temporal dead zone — a module-load
    * crash that depends on which file a future edit happens to import first. The
-   * slice's tests dispatch the real `rejected` creators, so a renamed or
-   * re-prefixed thunk fails there instead of going silently unreported.
+   * slice's tests dispatch the real `fulfilled` and `rejected` creators, so a
+   * renamed or re-prefixed thunk fails there instead of going silently
+   * unreported.
    *
    * `addCase` given a type string infers a bare `Action`, which carries no
-   * `payload`; the `& Action<…>` on each case is what lets it read one.
+   * `payload`; the `& Action<…>` on each rejection is what lets it read one.
    */
   extraReducers: (builder) => {
     builder
+      .addCase(INTENT_FULFILLED, (state) => {
+        state.error = null;
+      })
       .addCase(
         INTENT_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof INTENT_REJECTED>) => {
