@@ -19,6 +19,28 @@ export interface SavedSession {
 }
 
 /**
+ * The one definition of a usable session, shared by the read and write paths so
+ * the two can never disagree about what is worth keeping — a value written here
+ * is always a value `readSavedSession` will hand back.
+ *
+ * A blank `id` or `code` fails: a blank code is not a usable pointer, since the
+ * server would reject it and the user would be left with no way back but
+ * retyping. Blank is rejected rather than trimmed, because blank is provably
+ * unusable whereas trimming guesses at what the user meant.
+ */
+const isUsableSession = (value: unknown): value is SavedSession => {
+  if (typeof value !== "object" || value === null) return false;
+
+  const { id, code } = value as Record<string, unknown>;
+  return (
+    typeof id === "string" &&
+    id.trim() !== "" &&
+    typeof code === "string" &&
+    code.trim() !== ""
+  );
+};
+
+/**
  * Turns one raw stored string into a session, or `null` if it is not one.
  *
  * Never throws. `JSON.parse` is the only operation here that can fail, and over
@@ -26,9 +48,8 @@ export interface SavedSession {
  * exceptional, so the failure is folded into the same "not a session" answer as
  * a wrong shape. Every case below is a value the app must treat as "no
  * session": a non-object (`"abc"`, `5`), `null` (the literal string), an array,
- * an object missing `id`/`code` or holding a non-string for either, and a
- * blank `id`/`code` — a blank code is not a usable pointer, since the server
- * would reject it and the user would be left with no way back but retyping.
+ * an object missing `id`/`code` or holding a non-string for either, and a blank
+ * `id`/`code`.
  *
  * The session is rebuilt field by field, so extra keys a future or past build
  * may have written are dropped rather than handed on.
@@ -41,13 +62,8 @@ const parseStoredSession = (raw: string): SavedSession | null => {
     return null;
   }
 
-  if (typeof parsed !== "object" || parsed === null) return null;
-
-  const { id, code } = parsed as Record<string, unknown>;
-  if (typeof id !== "string" || typeof code !== "string") return null;
-  if (id.trim() === "" || code.trim() === "") return null;
-
-  return { id, code };
+  if (!isUsableSession(parsed)) return null;
+  return { id: parsed.id, code: parsed.code };
 };
 
 /**
@@ -98,11 +114,20 @@ export const readSavedSession = async (): Promise<SavedSession | null> => {
  * scores, and player lists out of storage, and a caller passing a wider object
  * (a `Scoreboard`, say) must not be able to widen what is written.
  *
- * Rejections are allowed and left to the caller. Being `async` means a
- * synchronous storage failure still arrives as a rejection instead of being
- * thrown at the call site.
+ * An unusable session is a no-op rather than a throw. Callers will not await
+ * this, so a throw would become an unhandled rejection in a later task's async
+ * flow; and storing a blank code would only manufacture an entry that the very
+ * next read has to detect and delete. Leaving any previous entry in place is
+ * deliberate: refusing to write is not a reason to destroy a session that is
+ * still good.
+ *
+ * Rejections from storage itself are allowed and left to the caller. Being
+ * `async` means a synchronous storage failure still arrives as a rejection
+ * instead of being thrown at the call site.
  */
 export const writeSavedSession = async (session: SavedSession): Promise<void> => {
+  if (!isUsableSession(session)) return;
+
   await AsyncStorage.setItem(KEY, JSON.stringify({ id: session.id, code: session.code }));
 };
 
