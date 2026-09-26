@@ -1,15 +1,10 @@
-import { Effect } from "effect";
 import { Router, type Request, type Response } from "express";
 import { ScoreboardController } from "../controller/scoreboardController";
 import type { ScoreboardDTO } from "../dto/ScoreboardDTO";
 import { runController } from "../utils/controllerHelper";
-import { AppLayer } from "../utils/layers";
+import { appServices } from "../utils/layers";
 
-const scoreboardController = Effect.runSync(
-  Effect.gen(function* () {
-    return yield* ScoreboardController;
-  }).pipe(Effect.provide(AppLayer)),
-);
+const { scoreboardController } = appServices();
 
 export const scoreboardRouter = Router();
 

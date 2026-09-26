@@ -2,29 +2,18 @@ import { Effect } from "effect";
 import type { Server } from "socket.io";
 import type { ScoreboardDTO } from "../dto/ScoreboardDTO";
 import { parseIntent } from "../dto/ScoreboardIntent";
-import { AppLayer } from "../utils/layers";
-import {
-  roomFor,
-  ScoreboardIntentService,
-  type ScoreboardIntentServiceInterface,
-} from "../service/scoreboardIntentService";
-import { ScoreboardSocket, type ScoreboardSocketInterface } from "../service/scoreboardSocket";
+import { appServices } from "../utils/layers";
+import { roomFor } from "../service/scoreboardIntentService";
 
 export type ScoreboardAck =
   | { readonly ok: true; readonly scoreboard: ScoreboardDTO }
   | { readonly ok: false; readonly code: number; readonly message: string };
 
-const intentService: ScoreboardIntentServiceInterface = Effect.runSync(
-  Effect.gen(function* () {
-    return yield* ScoreboardIntentService;
-  }).pipe(Effect.provide(AppLayer)),
-);
-
-const socketService: ScoreboardSocketInterface = Effect.runSync(
-  Effect.gen(function* () {
-    return yield* ScoreboardSocket;
-  }).pipe(Effect.provide(AppLayer)),
-);
+/**
+ * One build of the layer, so the intent service and its serialising lock are the
+ * same objects the REST routes use.
+ */
+const { intentService, socketService } = appServices();
 
 /** Accepts either a bare string or a `{ code }` object. */
 const readCode = (payload: unknown): string | null => {

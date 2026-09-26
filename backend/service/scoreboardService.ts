@@ -174,7 +174,15 @@ const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
     return toScoreboardDTO(newScoreboard);
   });
 
-const getScoreboardByCode = (db: Db) => (code: string) =>
+/**
+ * The read half of `applyIntentToCode`, exported for it.
+ *
+ * Both halves have to run against the *same* `db`. It used to reach this read
+ * through an injected `ScoreboardService`, which carries its own pool, so the
+ * read and the write that depended on it were two unrelated connections: no
+ * transaction could ever have made them atomic together.
+ */
+export const getScoreboardByCode = (db: Db) => (code: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
       try: () =>
