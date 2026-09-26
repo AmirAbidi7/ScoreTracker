@@ -126,6 +126,24 @@ describe("readSavedSession", () => {
     expect(stored()).toBeUndefined();
   });
 
+  /**
+   * The deliberate converse of the assertion above.
+   *
+   * A failed read is not a corrupt entry — it is a native module that was not
+   * ready, a bridge hiccup, a full disk. Deleting on that basis would cost
+   * someone their place in a game they are still playing, and the symptom
+   * ("the app sometimes forgets my game") is precisely what this module exists to
+   * prevent. Nothing is known about the entry, so nothing may be removed.
+   */
+  test("returns null without deleting the entry when the storage read fails", async () => {
+    seed(JSON.stringify({ id: "board-1", code: "AB12CD" }));
+    storage.getItem.mockRejectedValueOnce(new Error("native module not ready"));
+
+    expect(await readSavedSession()).toBeNull();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+    expect(stored()).toBe('{"id":"board-1","code":"AB12CD"}');
+  });
+
   test.each([
     ["a bare string", '"AB12CD"'],
     ["a number", "5"],
@@ -208,6 +226,27 @@ describe("readSavedSession", () => {
     });
 
     await expect(readSavedSession()).resolves.toBeNull();
+    expect(storage.removeItem).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `getItem` is typed `string | null`, so `undefined` means a broken runtime or
+   * a careless mock rather than a real stored value. It is still a read that
+   * produced no session, and the entry is no more usable than a corrupt one, so
+   * it is cleaned up on the same path.
+   *
+   * This is the case that pins `raw === null` over a truthiness check. Under
+   * `!raw` the read would answer `null` here just the same, and the only
+   * observable difference is the missing `removeItem` call — which is what this
+   * asserts.
+   */
+  test("discards the entry when the storage read resolves undefined", async () => {
+    seed(JSON.stringify({ id: "board-1", code: "AB12CD" }));
+    storage.getItem.mockResolvedValueOnce(undefined);
+
+    expect(await readSavedSession()).toBeNull();
+    expect(storage.removeItem).toHaveBeenCalledWith(KEY);
+    expect(stored()).toBeUndefined();
   });
 
   test("returns null without throwing when cleanup rejects", async () => {

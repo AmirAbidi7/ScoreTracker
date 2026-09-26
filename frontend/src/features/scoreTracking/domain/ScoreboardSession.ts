@@ -128,7 +128,10 @@ export const readSavedSession = async (): Promise<SavedSession | null> => {
 export const writeSavedSession = async (session: SavedSession): Promise<void> => {
   if (!isUsableSession(session)) return;
 
-  await AsyncStorage.setItem(KEY, JSON.stringify({ id: session.id, code: session.code }));
+  await AsyncStorage.setItem(
+    KEY,
+    JSON.stringify({ id: session.id, code: session.code }),
+  );
 };
 
 /** Rejections are allowed and left to the caller, for the same reason. */
