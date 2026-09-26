@@ -1,6 +1,7 @@
-import { createAsyncThunk } from "@reduxjs/toolkit";
+import { createAsyncThunk, type ThunkDispatch, type UnknownAction } from "@reduxjs/toolkit";
 import { ApiClientError } from "../../../infrastructure/api/client";
 import { scoreboardService } from "./domain/ScoreboardService";
+import type { Scoreboard } from "./domain/Scoreboard";
 import type { ScoreboardIntent } from "./domain/ScoreboardIntent";
 import { clearSavedSession, readSavedSession, writeSavedSession } from "./domain/ScoreboardSession";
 import {
@@ -10,23 +11,31 @@ import {
   resetScoreboard,
   setBoards,
   setBoardsStatus,
-  setError,
   setStatus,
 } from "./scoreTrackingSlice";
 
 /**
  * Every failure the user can be shown, in one place.
  *
- * `isOffline` and a 404 are separated because they demand different words: the
- * first means the request never left the device and the server may be perfectly
- * healthy, the second means it did and the answer was no. Collapsing them into
- * `error.message` would put a raw transport string in front of the user for one
- * and a backend's own wording for the other.
+ * A 404 is the one failure the user can act on by typing a different code, and
+ * no backend is likely to word it that way, so it gets its own sentence — a
+ * different one per call site, because "no scoreboard with that code" is
+ * nonsense as the answer to "delete this board" or "list the boards".
+ *
+ * Everything else, `status === 0` included, keeps the message the API client
+ * built. That looks like it loses the offline wording, but `isOffline` is
+ * `status === 0`, and `encodePathSegment` *also* builds a `status: 0` error for
+ * a code it cannot put in a URL — under a comment saying the message, not the
+ * status, is what tells the two apart. A fixed "Can't reach the server" for
+ * every `status === 0` is precisely the UI that comment warns about: it blames
+ * the network for a bug in the user's input, and throws away the only
+ * diagnostic. A genuine transport failure already reads "Can't reach the
+ * server", because that is what the client substitutes when the cause has no
+ * message of its own.
  */
-const describeError = (error: unknown): string => {
+const describeError = (error: unknown, notFound = "No scoreboard with that code"): string => {
   if (error instanceof ApiClientError) {
-    if (error.isOffline) return "Can't reach the server";
-    if (error.status === 404) return "No scoreboard with that code";
+    if (error.status === 404) return notFound;
     return error.message;
   }
   return error instanceof Error ? error.message : "Something went wrong";
@@ -35,9 +44,47 @@ const describeError = (error: unknown): string => {
 /**
  * Normalised here rather than at the input, because a thunk that only works
  * from one screen is not safe: a pasted code, a restored one, and a deep link
- * must all reach the server in the shape it generates (`[a-z0-9]{6}`).
+ * must all reach the server in the shape it generates (`[a-z0-9]{6}`). Before
+ * the length check, not after: `" ab12cd "` is a six-character code with
+ * padding, and `"  ab12  "` is a four-character code.
  */
 const normalizeCode = (rawCode: string): string => rawCode.trim().toUpperCase();
+
+/**
+ * Remembers which board to come back to, best effort.
+ *
+ * The board is already accepted server-side and already in the store by the
+ * time this runs, so a storage failure costs a convenience pointer and nothing
+ * else. Letting it reject would report a join that actually succeeded as
+ * failed, and — because nothing was saved — drop the user back on the Join
+ * screen at the next cold start, having thrown away a board that exists.
+ */
+const saveSession = async (board: Scoreboard): Promise<void> => {
+  await writeSavedSession({ id: board.id, code: board.code }).catch(() => {});
+};
+
+/**
+ * Leaves the board for good: the store first, then the saved pointer.
+ *
+ * The order is the whole point, and it is not cosmetic. `clearSavedSession` is
+ * `AsyncStorage.removeItem`, and that rejects when storage fails — so clear
+ * first, and a rejection skips the reset entirely. That strands `current` on a
+ * board the service has already left, and in `restoreSession`'s 404 arm it
+ * strands `status: "connecting"` for the lifetime of the process with the
+ * session still in storage, so the next cold start runs the same 404 again:
+ * the retry loop that arm exists to break.
+ *
+ * The clear is best effort for the same reason `useScoreboardSync` treats its
+ * own that way: a failed delete leaves one stale entry, which the next
+ * successful write replaces, and it must not reject a thunk whose state is
+ * already correct.
+ */
+const forgetSession = async (
+  dispatch: ThunkDispatch<unknown, unknown, UnknownAction>,
+): Promise<void> => {
+  dispatch(resetScoreboard());
+  await clearSavedSession().catch(() => {});
+};
 
 export const joinScoreboard = createAsyncThunk(
   "scoreboard/join",
@@ -50,7 +97,7 @@ export const joinScoreboard = createAsyncThunk(
 
     try {
       const board = await scoreboardService.joinScoreboard(code);
-      await writeSavedSession({ id: board.id, code: board.code });
+      await saveSession(board);
       dispatch(applyBoard(board));
       dispatch(setStatus("connected"));
       return board;
@@ -68,12 +115,12 @@ export const createScoreboard = createAsyncThunk(
 
     try {
       const board = await scoreboardService.createScoreboard(trimmed);
-      await writeSavedSession({ id: board.id, code: board.code });
+      await saveSession(board);
       dispatch(applyBoard(board));
       dispatch(setStatus("connected"));
       return board;
     } catch (error) {
-      return rejectWithValue(describeError(error));
+      return rejectWithValue(describeError(error, "Couldn't create the scoreboard"));
     }
   },
 );
@@ -89,7 +136,7 @@ export const loadScoreboards = createAsyncThunk(
       return boards;
     } catch (error) {
       dispatch(setBoardsStatus("error"));
-      return rejectWithValue(describeError(error));
+      return rejectWithValue(describeError(error, "Couldn't load scoreboards"));
     }
   },
 );
@@ -125,10 +172,16 @@ export const sendIntent = createAsyncThunk(
 
 export const leaveScoreboard = createAsyncThunk(
   "scoreboard/leave",
-  async (_, { dispatch }) => {
-    await scoreboardService.leaveScoreboard();
-    await clearSavedSession();
-    dispatch(resetScoreboard());
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      await scoreboardService.leaveScoreboard();
+    } catch (error) {
+      // The board is still open, so the store keeps it: reporting the failure
+      // is all that is owed. Resetting here would leave a user who is still in
+      // the room with no board on screen.
+      return rejectWithValue(describeError(error));
+    }
+    await forgetSession(dispatch);
   },
 );
 
@@ -137,11 +190,14 @@ export const deleteCurrentScoreboard = createAsyncThunk(
   async (_, { dispatch, rejectWithValue }) => {
     try {
       await scoreboardService.deleteCurrentScoreboard();
-      await clearSavedSession();
-      dispatch(resetScoreboard());
     } catch (error) {
-      return rejectWithValue(describeError(error));
+      // A failed delete is the caller's to handle: the board still exists, so
+      // the room and the tracked code are left alone and only the failure is
+      // reported. A 404 means somebody else got there first, which is the one
+      // delete failure the user can do nothing about.
+      return rejectWithValue(describeError(error, "That scoreboard has already been deleted"));
     }
+    await forgetSession(dispatch);
   },
 );
 
@@ -168,9 +224,10 @@ export const restoreSession = createAsyncThunk(
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 404) {
         // Deleted while the app was closed. Forget it rather than retrying
-        // forever against a board that no longer exists.
-        await clearSavedSession();
-        dispatch(resetScoreboard());
+        // forever against a board that no longer exists — and forget the store
+        // before the storage call, so a storage failure here cannot re-arm
+        // this same 404 on the next launch.
+        await forgetSession(dispatch);
         return null;
       }
       return rejectWithValue(describeError(error));
