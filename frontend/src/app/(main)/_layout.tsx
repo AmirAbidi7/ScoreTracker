@@ -1,4 +1,5 @@
 import Logo from "@/assets/vectors/logo.svg";
+import { useScoreboardSync } from "@/features/scoreTracking/useScoreboardSync";
 import { clsx } from "clsx";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
@@ -24,6 +25,8 @@ const Header = () => {
 };
 
 export default function MainLayout() {
+  useScoreboardSync();
+
   return (
     <>
       <StatusBar style="light" />
