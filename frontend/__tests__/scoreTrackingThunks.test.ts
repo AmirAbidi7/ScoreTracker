@@ -2,7 +2,10 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { ApiClient, ApiClientError } from "../infrastructure/api/client";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
-import { scoreboardService, type ScoreboardService } from "../src/features/scoreTracking/domain/ScoreboardService";
+import {
+  scoreboardService,
+  type ScoreboardService,
+} from "../src/features/scoreTracking/domain/ScoreboardService";
 import {
   clearSavedSession,
   readSavedSession,
@@ -365,6 +368,44 @@ describe("the session pointer is best effort", () => {
     await store.dispatch(deleteCurrentScoreboard());
 
     expect(state(store).current).toBeNull();
+  });
+});
+
+describe("a rejection reaches the store, which is the only place it can be shown", () => {
+  it("puts a refused intent's reason on screen", async () => {
+    service.sendIntent.mockResolvedValue({ ok: false, code: 404, message: "No such player" });
+    const store = makeStore();
+    store.dispatch(applyBoard(board));
+
+    const action = await store.dispatch(
+      sendIntent({ type: "addScore", playerId: 1, amount: 99 }),
+    );
+
+    expect(action.type).toBe("scoreboard/intent/rejected");
+    expect(state(store).error).toBe("No such player");
+  });
+
+  it("puts a refused intent's reason on screen when the send itself throws", async () => {
+    // The other half of the same silence: not a refusal the server sent, but a
+    // failure to reach it at all, which is the common one on a phone.
+    service.sendIntent.mockRejectedValue(new ApiClientError("Can't reach the server", 0));
+    const store = makeStore();
+
+    await store.dispatch(sendIntent({ type: "addScore", playerId: 1, amount: 2 }));
+
+    expect(state(store).error).toBe("Can't reach the server");
+  });
+
+  it("puts a failed delete's reason on screen and keeps the board", async () => {
+    service.deleteCurrentScoreboard.mockRejectedValue(new ApiClientError("Not found", 404));
+    const store = makeStore();
+    store.dispatch(applyBoard(board));
+
+    await store.dispatch(deleteCurrentScoreboard());
+
+    expect(state(store).error).toBe("That scoreboard has already been deleted");
+    // The board still exists, so it is still the one on screen.
+    expect(state(store).current).toEqual(board);
   });
 });
 

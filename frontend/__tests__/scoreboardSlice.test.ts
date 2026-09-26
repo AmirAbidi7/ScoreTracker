@@ -10,6 +10,26 @@ import reducer, {
   setStatus,
 } from "../src/features/scoreTracking/scoreTrackingSlice";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
+import {
+  deleteCurrentScoreboard,
+  sendIntent,
+} from "../src/features/scoreTracking/scoreTrackingThunks";
+
+/**
+ * The gateway is mocked wholesale, as in the thunks' own tests: this file is
+ * about the reducer, and the slice must be importable without a socket.
+ */
+jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
+  scoreboardService: {
+    joinScoreboard: jest.fn(),
+    createScoreboard: jest.fn(),
+    listScoreboards: jest.fn(),
+    leaveScoreboard: jest.fn(),
+    deleteCurrentScoreboard: jest.fn(),
+    sendIntent: jest.fn(),
+    subscribe: jest.fn(() => () => {}),
+  },
+}));
 
 const board: Scoreboard = {
   id: "b1",
@@ -153,5 +173,71 @@ describe("scoreboardSlice", () => {
     expect(reducer(initial, setBoardsStatus("loading")).boardsStatus).toBe("loading");
     expect(reducer(initial, setBoardsStatus("ready")).boardsStatus).toBe("ready");
     expect(reducer(initial, setBoardsStatus("error")).boardsStatus).toBe("error");
+  });
+
+  /**
+   * The two rejections are matched by their type strings, which the slice cannot
+   * import from the thunks without a cycle. Dispatching the *real* creators here
+   * is what keeps the strings honest: rename a thunk's prefix, or change what it
+   * rejects with, and this fails instead of the app going silent on a refused
+   * score change again.
+   */
+  test("a rejection the thunks raise is reported", () => {
+    const rejected = sendIntent.rejected(
+      new Error("No such player"),
+      "request-1",
+      { type: "addScore", playerId: 1, amount: 2 },
+    );
+    const next = reducer(reducer(initial, applyBoard(board)), rejected);
+    expect(rejected.type).toBe("scoreboard/intent/rejected");
+    expect(next.error).toBe("No such player");
+    // Still the server's board: a refusal changes nothing about the score.
+    expect(next.current).toEqual(board);
+  });
+
+  test("a failed delete is reported and keeps the board", () => {
+    const rejected = deleteCurrentScoreboard.rejected(
+      new Error("Bad gateway"),
+      "request-2",
+      undefined,
+    );
+    const next = reducer(reducer(initial, applyBoard(board)), rejected);
+    expect(next.error).toBe("Bad gateway");
+    expect(next.current).toEqual(board);
+  });
+
+  /**
+   * The shape `rejectWithValue` produces, which is what every thunk in this app
+   * actually does — so it is the one that has to be read, and it is not the
+   * shape the `rejected` creator above builds.
+   */
+  test("a reason carried in the payload is reported", () => {
+    const rejected = {
+      type: "scoreboard/intent/rejected",
+      payload: "No such player",
+      meta: {
+        arg: { type: "addScore", playerId: 1, amount: 2 },
+        requestId: "request-3",
+        rejectedWithValue: true,
+        requestStatus: "rejected",
+        aborted: false,
+        condition: false,
+      },
+    };
+
+    expect(reducer(initial, rejected).error).toBe("No such player");
+  });
+
+  test("a rejection with nothing to say leaves the previous error alone", () => {
+    // An empty red banner is the same silence as no banner, so there is no
+    // message and nothing is written.
+    const silent = { type: "scoreboard/intent/rejected", payload: undefined, meta: {} };
+    const withError = reducer(initial, setError("boom"));
+    expect(reducer(withError, silent).error).toBe("boom");
+  });
+
+  test("a rejection is cleared by the next status change, like any other error", () => {
+    const withError = reducer(initial, setError("boom"));
+    expect(reducer(withError, setStatus("connected")).error).toBeNull();
   });
 });

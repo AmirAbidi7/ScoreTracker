@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { Plus, Trash } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -70,7 +71,11 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
   // to a delta of 0, which the server would accept as a real `addScore` intent
   // and apply as a no-op write — a pointless request and broadcast, and a
   // "Saving 1 change…" flash for something the user did not change. So the
-  // buttons do nothing unless the box holds a usable non-zero number.
+  // buttons are disabled outright unless the box holds a usable non-zero number:
+  // `keyboardType="numeric"` is a hint to the keyboard, not validation, so a
+  // pasted "abc" or a grouped "1,000" lands here too. A dimmed, disabled button
+  // says so, where a button that silently swallows the press is
+  // indistinguishable from a dropped tap.
   const parsed = Number(amount);
   const delta = Number.isFinite(parsed) ? parsed : 0;
   const adjustable = delta !== 0;
@@ -87,13 +92,24 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
     void dispatch(sendIntent({ type: "addScore", playerId: player.id, amount: change }));
   };
 
+  /**
+   * A long press, not a tap, for the same reason deleting the game is one: this
+   * drops a player for everyone in the room and there is no undo. `onPress` is
+   * deliberately absent, so a tap does nothing at all — an accidental brush
+   * across the card cannot cost somebody their place in the game.
+   */
   const remove = () => {
     void dispatch(sendIntent({ type: "removePlayer", playerId: player.id }));
   };
 
   return (
     <View className="mx-8 border border-secondary flex items-stretch px-4 bg-black relative p-2">
-      <Pressable onPress={remove} testID={`remove-player-${player.id}`}>
+      <Pressable
+        onLongPress={remove}
+        delayLongPress={600}
+        accessibilityHint={`Long press to remove ${player.name} from the game for everyone`}
+        testID={`remove-player-${player.id}`}
+      >
         <View className="absolute top-0 right-0 m-2">
           <Trash color={colors.white} />
         </View>
@@ -127,7 +143,9 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
         <View className="flex flex-row gap-4 justify-between items-center">
           <Pressable
             onPress={() => adjust(1)}
-            className="border border-white px-4"
+            disabled={!adjustable}
+            accessibilityState={{ disabled: !adjustable }}
+            className={clsx("border border-white px-4", !adjustable && "opacity-50")}
             testID={`add-score-${player.id}`}
           >
             <Text className="text-white font-sans-regular text-md">+</Text>
@@ -141,7 +159,9 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
           />
           <Pressable
             onPress={() => adjust(-1)}
-            className="border border-white px-4"
+            disabled={!adjustable}
+            accessibilityState={{ disabled: !adjustable }}
+            className={clsx("border border-white px-4", !adjustable && "opacity-50")}
             testID={`subtract-score-${player.id}`}
           >
             <Text className="text-white font-sans-regular text-md">-</Text>
@@ -184,12 +204,20 @@ export default function ScoreTrackingPage() {
         <Text className="text-white font-sans-regular text-lg text-center">
           {error ?? "Enter a code on the Join tab, or start a new game."}
         </Text>
+        {/*
+          * "Dismiss", not "Retry": with `current === null` there is nothing to
+          * retry. No board means no code, and the saved session that would have
+          * carried one was either never written or has already been cleared.
+          * What this does is put the error away — `leaveScoreboard` resets the
+          * store, which nulls `error` and drops any stale session pointer — so
+          * a label promising a second attempt is a label that lies.
+          */}
         <Pressable
           onPress={() => void dispatch(leaveScoreboard())}
           className="border border-primary px-6 py-3"
-          testID="empty-state-retry"
+          testID="empty-state-dismiss"
         >
-          <Text className="text-white font-sans-medium text-lg">Retry</Text>
+          <Text className="text-white font-sans-medium text-lg">Dismiss</Text>
         </Pressable>
       </View>
     );

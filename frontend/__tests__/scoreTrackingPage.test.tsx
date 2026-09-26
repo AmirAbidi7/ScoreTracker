@@ -139,10 +139,22 @@ describe("no game joined", () => {
     expect(screen.queryByText("Enter a code on the Join tab, or start a new game.")).toBeNull();
   });
 
+  /**
+   * The button says "Dismiss" because that is all it can do. With no board there
+   * is no code to rejoin and no saved session to retry from, so a label
+   * promising a second attempt is a label that lies.
+   */
+  it("offers a dismiss, not a retry it cannot honour", async () => {
+    await renderPage();
+
+    expect(screen.getByText("Dismiss")).toBeOnTheScreen();
+    expect(screen.queryByText("Retry")).toBeNull();
+  });
+
   it("clears the stale error when the user dismisses the empty state", async () => {
     const store = await renderPage((s) => s.dispatch(setError("Can't reach the server")));
 
-    await fireEvent.press(screen.getByTestId("empty-state-retry"));
+    await fireEvent.press(screen.getByTestId("empty-state-dismiss"));
 
     expect(service.leaveScoreboard).toHaveBeenCalledTimes(1);
     await waitFor(() =>
@@ -205,13 +217,16 @@ describe("scoring", () => {
     expect(store.getState().scoreboard.current).toEqual(board);
   });
 
-  it("negates the amount for the minus button", async () => {
+  it("negates the amount for the minus button, and sends only that", async () => {
     service.sendIntent.mockReturnValue(new Promise<ScoreboardAck>(() => {}));
     await renderPage((store) => store.dispatch(applyBoard(board)));
 
     await fireEvent.changeText(screen.getByTestId("amount-2"), "4");
     await fireEvent.press(screen.getByTestId("subtract-score-2"));
 
+    // `toHaveBeenCalledTimes` first: a `+4` alongside the `-4` would satisfy a
+    // bare `toHaveBeenCalledWith`, and the two together would double the score.
+    expect(service.sendIntent).toHaveBeenCalledTimes(1);
     expect(service.sendIntent).toHaveBeenCalledWith({
       type: "addScore",
       playerId: 2,
@@ -219,21 +234,55 @@ describe("scoring", () => {
     });
   });
 
-  it("sends nothing at all for an amount that is not a usable number", async () => {
+  it("sends one intent per press, never one per direction", async () => {
     service.sendIntent.mockReturnValue(new Promise<ScoreboardAck>(() => {}));
     const store = await renderPage((s) => s.dispatch(applyBoard(board)));
 
+    await fireEvent.press(screen.getByTestId("add-score-1"));
+    await fireEvent.press(screen.getByTestId("subtract-score-1"));
+
+    expect(service.sendIntent).toHaveBeenCalledTimes(2);
+    expect(store.getState().scoreboard.pendingIntents).toBe(2);
+  });
+
+  it("disables the buttons for an amount that is not a usable number", async () => {
+    service.sendIntent.mockReturnValue(new Promise<ScoreboardAck>(() => {}));
+    const store = await renderPage((s) => s.dispatch(applyBoard(board)));
+
+    expect(screen.getByTestId("add-score-1")).toBeEnabled();
+
     // The server would accept 0 and apply it as a no-op write: a request, a
     // broadcast and a "Saving 1 change…" flash for a score that did not change.
-    for (const amount of ["", "   ", "abc", "0"]) {
+    // `keyboardType="numeric"` is a hint, so all of these are reachable.
+    for (const amount of ["", "   ", "abc", "0", "1,000"]) {
       await fireEvent.changeText(screen.getByTestId("amount-1"), amount);
       await fireEvent.press(screen.getByTestId("add-score-1"));
       await fireEvent.press(screen.getByTestId("subtract-score-1"));
+
+      // Not merely inert: visibly inert, so a dead press is not mistaken for a
+      // dropped tap. The class is the only place the dimming is observable —
+      // NativeWind resolves it to a style no query can see.
+      expect(screen.getByTestId("add-score-1")).toBeDisabled();
+      expect(screen.getByTestId("subtract-score-1")).toBeDisabled();
+      expect(screen.getByTestId("add-score-1").props.className).toContain("opacity-50");
     }
 
     expect(service.sendIntent).not.toHaveBeenCalled();
     expect(store.getState().scoreboard.pendingIntents).toBe(0);
     expect(screen.queryByTestId("pending-banner")).toBeNull();
+  });
+
+  it("enables the buttons again once the amount is usable", async () => {
+    service.sendIntent.mockReturnValue(new Promise<ScoreboardAck>(() => {}));
+    await renderPage((store) => store.dispatch(applyBoard(board)));
+
+    await fireEvent.changeText(screen.getByTestId("amount-1"), "abc");
+    expect(screen.getByTestId("add-score-1")).toBeDisabled();
+
+    await fireEvent.changeText(screen.getByTestId("amount-1"), "2");
+    expect(screen.getByTestId("add-score-1")).toBeEnabled();
+    expect(screen.getByTestId("subtract-score-1")).toBeEnabled();
+    expect(screen.getByTestId("add-score-1").props.className).not.toContain("opacity-50");
   });
 
   it("shows the pending banner while the server decides, and the server's score after", async () => {
@@ -274,16 +323,28 @@ describe("scoring", () => {
     );
   });
 
-  it("sends a removePlayer intent from the card's trash control", async () => {
+  it("sends a removePlayer intent from a long press on the card's trash control", async () => {
     service.sendIntent.mockReturnValue(new Promise<ScoreboardAck>(() => {}));
-    await renderPage((store) => store.dispatch(applyBoard(board)));
+    const store = await renderPage((s) => s.dispatch(applyBoard(board)));
 
-    await fireEvent.press(screen.getByTestId("remove-player-3"));
+    const trash = screen.getByTestId("remove-player-3");
 
+    // A plain tap removes nobody: dropping a player costs them their place in
+    // the game for everyone, so it takes the same deliberate gesture as deleting
+    // the game does.
+    await fireEvent.press(trash);
+    expect(service.sendIntent).not.toHaveBeenCalled();
+
+    await fireEvent(trash, "longPress");
+
+    expect(service.sendIntent).toHaveBeenCalledTimes(1);
     expect(service.sendIntent).toHaveBeenCalledWith({
       type: "removePlayer",
       playerId: 3,
     });
+    // The hint is what makes a hidden gesture discoverable to a screen reader.
+    expect(trash.props.accessibilityHint).toContain("Sally");
+    expect(store.getState().scoreboard.current).toEqual(board);
   });
 });
 
@@ -357,6 +418,33 @@ describe("connection and error banners", () => {
 
     expect(screen.getByTestId("scoreboard-error")).toHaveTextContent("No such player");
   });
+
+  /**
+   * The end of the silent-refusal path: the server turns the change down, the
+   * pending banner comes and goes, and the user is told why the score did not
+   * move. The connection is up throughout, so the connection banner cannot be
+   * what covers for this.
+   */
+  it("says why a score the server refused did not change", async () => {
+    service.sendIntent.mockResolvedValue({
+      ok: false,
+      code: 404,
+      message: "No such player",
+    });
+    const store = await renderPage((s) => {
+      s.dispatch(applyBoard(board));
+      s.dispatch(setStatus("connected"));
+    });
+
+    await fireEvent.press(screen.getByTestId("add-score-1"));
+
+    await screen.findByTestId("scoreboard-error");
+    expect(screen.getByTestId("scoreboard-error")).toHaveTextContent("No such player");
+    // The refusal is reported and nothing else changes: no banner left spinning,
+    // and the score exactly where the server left it.
+    expect(screen.queryByTestId("pending-banner")).toBeNull();
+    expect(store.getState().scoreboard.current).toEqual(board);
+  });
 });
 
 describe("deleting the game", () => {
@@ -385,7 +473,16 @@ describe("deleting the game", () => {
     const store = await renderPage((s) => s.dispatch(applyBoard(board)));
     await fireEvent(screen.getByTestId("game-header"), "longPress");
 
-    await pressAlertButton(alertButtons(alert).cancel, "Cancel");
+    const { cancel, confirm } = alertButtons(alert);
+    // The style is what the platform uses to decide whether this button is the
+    // safe way out, so a swap with the destructive one has to fail here and not
+    // merely in a reviewer's reading.
+    expect(cancel?.style).toBe("cancel");
+    expect(confirm?.style).toBe("destructive");
+    // Cancel is not a quieter delete: it has no handler at all.
+    expect(cancel?.onPress).toBeUndefined();
+
+    await pressAlertButton(cancel, "Cancel");
 
     expect(service.deleteCurrentScoreboard).not.toHaveBeenCalled();
     expect(store.getState().scoreboard.current).toEqual(board);
@@ -405,16 +502,21 @@ describe("deleting the game", () => {
     await screen.findByTestId("empty-state");
   });
 
-  it("keeps the board on screen when the delete fails", async () => {
-    // A failed delete is the thunk's to report and the store's to keep: the
-    // board still exists, so the room and the tracked code must survive.
+  it("keeps the board on screen when the delete fails, and says why", async () => {
+    // A failed delete is the store's to report as well as to keep: the board
+    // still exists, so the room and the tracked code must survive, and the user
+    // agreed to something irreversible and is owed a reason for it not happening.
     service.deleteCurrentScoreboard.mockRejectedValue(new Error("Bad gateway"));
     const store = await renderPage((s) => s.dispatch(applyBoard(board)));
     await fireEvent(screen.getByTestId("game-header"), "longPress");
 
     await pressAlertButton(alertButtons(alert).confirm, "Delete");
 
-    await waitFor(() => expect(service.deleteCurrentScoreboard).toHaveBeenCalledTimes(1));
+    // The banner is the page rendering `error`; no page change was needed for
+    // the slice's new rejection case to become visible.
+    await waitFor(() =>
+      expect(screen.getByTestId("scoreboard-error")).toHaveTextContent("Bad gateway"),
+    );
     expect(store.getState().scoreboard.current).toEqual(board);
     expect(screen.queryByTestId("empty-state")).toBeNull();
   });
