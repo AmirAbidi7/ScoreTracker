@@ -12,6 +12,7 @@ import reducer, {
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 import {
   deleteCurrentScoreboard,
+  restoreSession,
   sendIntent,
 } from "../src/features/scoreTracking/scoreTrackingThunks";
 
@@ -233,6 +234,27 @@ describe("scoreboardSlice", () => {
     expect(next.error).toBe("No such player");
     // Still the server's board: a refusal changes nothing about the score.
     expect(next.current).toEqual(board);
+  });
+
+  /**
+   * A cold start with a session saved and no reachable backend: the restore thunk
+   * sets `connecting` and then rejects, and with no case for it the reason went
+   * nowhere — the screen said "No game yet" and a status that never resolved. The
+   * empty state renders `error` in place of its standing hint, so reporting it
+   * here is the whole fix.
+   */
+  test("a session that could not be restored is reported, and the status left alone", () => {
+    const rejected = restoreSession.rejected(new Error("Can't reach the server"), "request-8", undefined);
+    const afterConnecting = reducer(initial, setStatus("connecting"));
+
+    const next = reducer(afterConnecting, rejected);
+
+    expect(rejected.type).toBe("scoreboard/restore/rejected");
+    expect(next.error).toBe("Can't reach the server");
+    // Left as the thunk set it. Calling this a `reconnecting` would be a guess
+    // about a socket that was never opened, and the banner renders "Reconnecting"
+    // for anything but `offline`.
+    expect(next.status).toBe("connecting");
   });
 
   test("a failed delete is reported and keeps the board", () => {

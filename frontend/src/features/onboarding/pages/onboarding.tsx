@@ -6,7 +6,7 @@ export default function OnboardingPage() {
   return (
     <View className="flex-1">
       <Image
-        source={onboarding}
+        source={onboarding.onboarding}
         className="absolute top-0 w-full aspect-[1]"
         resizeMode="cover"
       ></Image>

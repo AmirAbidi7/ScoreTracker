@@ -14,6 +14,7 @@ export type BoardsStatus = "idle" | "loading" | "ready" | "error";
  */
 const INTENT_FULFILLED = "scoreboard/intent/fulfilled";
 const INTENT_REJECTED = "scoreboard/intent/rejected";
+const RESTORE_REJECTED = "scoreboard/restore/rejected";
 const LEAVE_REJECTED = "scoreboard/leave/rejected";
 const DELETE_REJECTED = "scoreboard/delete/rejected";
 
@@ -175,6 +176,21 @@ const scoreboardSlice = createSlice({
       .addCase(
         INTENT_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof INTENT_REJECTED>) => {
+          const message = rejectionReason(action);
+          if (message !== null) state.error = message;
+        },
+      )
+      .addCase(
+        RESTORE_REJECTED,
+        (state, action: PayloadAction<string> & Action<typeof RESTORE_REJECTED>) => {
+          // A cold start with a saved session and no reachable backend left
+          // `status: "connecting"` — the thunk's own last word — and no reason
+          // anywhere, because the slice had no case for this one. The empty state
+          // renders `error` in place of its standing hint, so this is the whole
+          // fix: the user is told the server could not be reached, rather than
+          // being left looking at "No game yet" and a status that never resolves.
+          // The 404 arm is not here and needs no case: it forgets the session and
+          // resets the store away, which nulls `error` on the way out.
           const message = rejectionReason(action);
           if (message !== null) state.error = message;
         },
