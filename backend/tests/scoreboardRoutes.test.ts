@@ -26,16 +26,22 @@ describe("the scoreboard routes", () => {
      */
     process.env.DATABASE_URL = "postgres://nobody:nobody@127.0.0.1:1/none";
     const { scoreboardRouter } = await import("../routes/scoreboardController");
-    routes = scoreboardRouter.stack
-      .filter((layer) => layer.route)
-      .map((layer) => `${Object.keys(layer.route.methods).join("/")} ${layer.route.path}`);
+    // Express 5 has no `methods` map to read: each verb is a layer in the route's
+    // own stack, carrying its own method, so that is where they are listed from.
+    routes = scoreboardRouter.stack.flatMap((layer) => {
+      const route = layer.route;
+      if (!route) return [];
+      return route.stack.map((handler) => `${handler.method} ${route.path}`);
+    });
   });
 
   test("nothing accepts a client-authored board", () => {
     expect(routes).toEqual([
-      "post/get /scoreboard",
+      "post /scoreboard",
+      "get /scoreboard",
       "get /scoreboard/join/:code",
-      "get/delete /scoreboard/:id",
+      "get /scoreboard/:id",
+      "delete /scoreboard/:id",
     ]);
   });
 
