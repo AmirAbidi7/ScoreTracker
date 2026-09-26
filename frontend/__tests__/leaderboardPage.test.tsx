@@ -32,7 +32,43 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   },
 }));
 
-jest.mock("expo-router", () => ({ router: { replace: jest.fn() } }));
+/**
+ * `useFocusEffect` runs its callback on a real `useEffect`, and the callbacks
+ * are kept so a test can fire the *re-focus* the real hook would fire. The
+ * refetch is therefore proven to be bound to the focus primitive rather than to
+ * a bare mount effect: a mount effect has no second run to trigger.
+ *
+ * It lives inside the factory because `jest.mock` is hoisted above the imports,
+ * so a `const` in the test body would still be in its temporal dead zone when
+ * this module is first required.
+ */
+jest.mock("expo-router", () => {
+  const { useEffect: useReactEffect } = require("react");
+  const focusEffects: Array<() => void> = [];
+  return {
+    router: { replace: jest.fn() },
+    focusEffects,
+    useFocusEffect: (effect: () => void) => {
+      focusEffects.push(effect);
+      useReactEffect(() => {
+        effect();
+      }, [effect]);
+    },
+  };
+});
+
+const { focusEffects } = jest.requireMock("expo-router") as {
+  focusEffects: Array<() => void>;
+};
+
+/** What the real hook does when the tab comes back into view. */
+const refocus = async (): Promise<void> => {
+  const effect = focusEffects[focusEffects.length - 1];
+  if (!effect) throw new Error("the page never registered a focus effect");
+  await act(async () => {
+    effect();
+  });
+};
 
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
 const replace = router.replace as jest.MockedFunction<typeof router.replace>;
@@ -93,6 +129,11 @@ const scoreboardRoute = (): string => {
   return `/(main)/${tab.name}`;
 };
 
+/** The list has rendered once its first row has, and the rows are one map. */
+const waitForRows = async (): Promise<void> => {
+  await screen.findByTestId(`board-${catan.id}`);
+};
+
 /** A promise held open, to keep the page in its loading or in-flight state. */
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -104,12 +145,18 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-const settleWith = async (boards: Scoreboard[]): Promise<void> => {
-  await screen.findByTestId(`board-${boards[0].id}`);
+/** A third game, for the questions about a list that is already on screen. */
+const uno: Scoreboard = {
+  id: "board-3",
+  gameName: "Uno",
+  code: "QQ77QQ",
+  players: [{ id: 1, name: "Sally", score: 0 }],
+  updateTime: "2026-09-25T12:00:00.000Z",
 };
 
 beforeEach(() => {
   jest.resetAllMocks();
+  focusEffects.length = 0;
   service.listScoreboards.mockResolvedValue([catan, chess]);
   service.joinScoreboard.mockResolvedValue(chess);
 });
@@ -170,11 +217,72 @@ describe("a load that failed", () => {
     await renderPage();
     await waitFor(() => expect(screen.getByTestId("boards-error")).toBeOnTheScreen());
 
-    await fireEvent.press(screen.getByTestId("boards-retry"));
+    await fireEvent.press(screen.getByTestId("boards-refresh"));
 
     expect(service.listScoreboards).toHaveBeenCalledTimes(2);
-    await settleWith([catan]);
+    await waitForRows();
     expect(screen.queryByTestId("boards-error")).toBeNull();
+  });
+});
+
+describe("keeping the list current", () => {
+  /**
+   * The case a mount-only read gets wrong: the tab was already loaded, so a game
+   * started since then is on the server and missing here. A list that under-
+   * reports is the tab's whole failure mode, so the read has to follow focus.
+   */
+  it("re-reads the list when the tab comes back into focus", async () => {
+    await renderPage();
+    await waitForRows();
+    expect(service.listScoreboards).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId(`board-${uno.id}`)).toBeNull();
+
+    service.listScoreboards.mockResolvedValue([catan, chess, uno]);
+    await refocus();
+
+    expect(service.listScoreboards).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId(`board-${uno.id}`)).toBeOnTheScreen();
+  });
+
+  /**
+   * A focus effect is not an affordance: someone staring at a list that is
+   * missing the game they just started is not going to leave the tab and come
+   * back. The control has to be there while the list is on screen, and it does
+   * not need a navigator or a mock to be pressed.
+   */
+  it("can be refreshed by hand while the list is already on screen", async () => {
+    await renderPage();
+    await waitForRows();
+    expect(screen.getByTestId("boards-refresh")).toBeOnTheScreen();
+
+    service.listScoreboards.mockResolvedValue([catan, chess, uno]);
+    await fireEvent.press(screen.getByTestId("boards-refresh"));
+
+    expect(service.listScoreboards).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId(`board-${uno.id}`)).toBeOnTheScreen();
+  });
+
+  it("offers the refresh when there is nothing to list yet, too", async () => {
+    service.listScoreboards.mockResolvedValue([]);
+
+    await renderPage();
+
+    expect(await screen.findByTestId("boards-empty")).toBeOnTheScreen();
+    expect(screen.getByTestId("boards-refresh")).toBeOnTheScreen();
+  });
+
+  it("takes a stale refusal to join away when the list is re-read", async () => {
+    service.joinScoreboard.mockRejectedValue(new ApiClientError("Nope", 404));
+    await renderPage();
+    await waitForRows();
+    await fireEvent.press(screen.getByTestId(`board-${catan.id}`));
+    await waitFor(() => expect(screen.getByTestId("join-error")).toBeOnTheScreen());
+
+    await refocus();
+
+    // A message about a list that has since been replaced, with nothing able to
+    // dismiss it — the same defect the slice refuses to leave in `error`.
+    expect(screen.queryByTestId("join-error")).toBeNull();
   });
 });
 
@@ -195,7 +303,7 @@ describe("the list itself", () => {
   it("lists every game with its code and how many are playing", async () => {
     await renderPage();
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     expect(screen.getByTestId(`board-name-${catan.id}`)).toHaveTextContent("Catan");
     expect(screen.getByTestId(`board-code-${catan.id}`)).toHaveTextContent("AB12CD");
     expect(screen.getByTestId(`board-name-${chess.id}`)).toHaveTextContent("Chess");
@@ -208,7 +316,7 @@ describe("the list itself", () => {
   it("marks the board this device is in, and only that one", async () => {
     await renderPage((store) => store.dispatch(applyBoard(catan)));
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     expect(screen.getByTestId(`board-open-${catan.id}`)).toBeOnTheScreen();
     expect(screen.queryByTestId(`board-open-${chess.id}`)).toBeNull();
 
@@ -216,14 +324,21 @@ describe("the list itself", () => {
     // the open board is given is only observable here.
     expect(screen.getByTestId(`board-${catan.id}`).props.className).toContain("border-primary");
     expect(screen.getByTestId(`board-${chess.id}`).props.className).toContain("border-secondary");
+
+    // And the mark has to survive a screen reader: the row's own label replaces
+    // what its children would read out, "Open" included, so `selected` is the
+    // only thing carrying it.
+    expect(screen.getByTestId(`board-${catan.id}`)).toBeSelected();
+    expect(screen.getByTestId(`board-${chess.id}`)).not.toBeSelected();
   });
 
   it("marks nothing when this device is in no board", async () => {
     await renderPage();
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     expect(screen.queryByTestId(`board-open-${catan.id}`)).toBeNull();
     expect(screen.queryByTestId(`board-open-${chess.id}`)).toBeNull();
+    expect(screen.getByTestId(`board-${catan.id}`)).not.toBeSelected();
   });
 });
 
@@ -231,7 +346,7 @@ describe("joining a game from a row", () => {
   it("joins the game that was pressed, with that row's own code", async () => {
     await renderPage();
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     await fireEvent.press(screen.getByTestId(`board-${chess.id}`));
 
     expect(service.joinScoreboard).toHaveBeenCalledTimes(1);
@@ -242,7 +357,7 @@ describe("joining a game from a row", () => {
   it("goes to the board the server sent, and to the Scoreboard tab", async () => {
     const store = await renderPage();
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     await fireEvent.press(screen.getByTestId(`board-${chess.id}`));
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(scoreboardRoute()));
@@ -257,7 +372,7 @@ describe("joining a game from a row", () => {
     service.joinScoreboard.mockRejectedValue(new ApiClientError("Nope", 404));
     const store = await renderPage();
 
-    await settleWith([catan, chess]);
+    await waitForRows();
     await fireEvent.press(screen.getByTestId(`board-${catan.id}`));
 
     await waitFor(() =>
@@ -273,7 +388,7 @@ describe("joining a game from a row", () => {
   it("takes the last refusal away when the next attempt starts", async () => {
     service.joinScoreboard.mockRejectedValue(new ApiClientError("Nope", 404));
     await renderPage();
-    await settleWith([catan, chess]);
+    await waitForRows();
 
     await fireEvent.press(screen.getByTestId(`board-${catan.id}`));
     await waitFor(() => expect(screen.getByTestId("join-error")).toBeOnTheScreen());
@@ -288,7 +403,7 @@ describe("joining a game from a row", () => {
     const request = deferred<Scoreboard>();
     service.joinScoreboard.mockReturnValue(request.promise);
     await renderPage();
-    await settleWith([catan, chess]);
+    await waitForRows();
 
     await fireEvent.press(screen.getByTestId(`board-${chess.id}`));
     expect(screen.getByTestId(`board-${chess.id}`)).toBeDisabled();

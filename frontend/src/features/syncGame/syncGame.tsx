@@ -3,6 +3,10 @@ import { useState, type ComponentProps } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { colors } from "../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../store";
+import {
+  rejectionReason,
+  type RejectionCarrier,
+} from "../scoreTracking/rejectionReason";
 import { createScoreboard, joinScoreboard } from "../scoreTracking/scoreTrackingThunks";
 
 const Field = ({ label, ...input }: { label: string } & ComponentProps<typeof TextInput>) => (
@@ -37,26 +41,6 @@ const Button = ({
   </Pressable>
 );
 
-/**
- * The message a rejected thunk is carrying, or `null` when it is carrying
- * nothing worth putting on screen.
- *
- * Both shapes `unwrap()` can reject with are read, because the thunks here use
- * both: `rejectWithValue(describeError(error))` throws the string itself, while
- * a thunk that *threw* rejects with RTK's serialised error — a plain object with
- * a `message`, not an `Error`, so an `instanceof Error` test would miss every
- * one of them. A blank message is treated as no message: it renders an empty red
- * line, which is the silence this exists to prevent.
- */
-const reasonOf = (rejected: unknown): string | null => {
-  if (typeof rejected === "string") return rejected.trim() === "" ? null : rejected;
-  if (typeof rejected === "object" && rejected !== null && "message" in rejected) {
-    const { message } = rejected as { message: unknown };
-    if (typeof message === "string" && message.trim() !== "") return message;
-  }
-  return null;
-};
-
 export default function SyncGame() {
   const dispatch = useAppDispatch();
   const [code, setCode] = useState("");
@@ -70,27 +54,33 @@ export default function SyncGame() {
    * Runs one request and reports how it ended, so both buttons behave the same
    * way and neither has to invent its own idea of a failure.
    *
-   * `unwrap()` rather than the returned action: the reason a thunk rejected with
-   * is in `payload`, and `payload` is `unknown` here — no `rejectWithValue` type
-   * is declared on these thunks — so reading it means a cast that would compile
-   * just as happily against a payload that is not a string. Unwrapping throws
-   * the reason instead, and `reasonOf` has to look at it honestly.
+   * The thunks are dispatched rather than unwrapped so the *rejected action* is
+   * what comes back: `unwrap()` throws the payload or the serialised error, and
+   * those are the two `rejectionReason` has to tell apart to avoid answering a
+   * good message with RTK's "Rejected" placeholder. A resolved attempt is not a
+   * failure and its payload is a board rather than a message, so `match` — not
+   * the shape of what came back — is what says which of the two this was.
    *
    * Nothing here writes board state. The store is the server's to change, and a
    * join that fails has to leave the user exactly where they were.
    */
   const run = async (
     kind: "join" | "create",
-    attempt: () => Promise<unknown>,
+    attempt: () => Promise<RejectionCarrier | null>,
     fallback: string,
   ): Promise<void> => {
     setPending(kind);
     setFormError(null);
 
     try {
-      await attempt();
-    } catch (rejected: unknown) {
-      setFormError(reasonOf(rejected) ?? fallback);
+      const rejected = await attempt();
+      if (rejected !== null) setFormError(rejectionReason(rejected) ?? fallback);
+    } catch {
+      // Not reachable — `dispatch` settles a thunk as an action rather than
+      // rejecting — and kept because the alternative is worse: an unexpected
+      // throw would escape `void run(…)` as an unhandled rejection with the
+      // button still reading "Joining..." and nothing on screen to say why.
+      setFormError(fallback);
     } finally {
       setPending(null);
     }
@@ -108,7 +98,14 @@ export default function SyncGame() {
       setFormError("A scoreboard code is 6 characters");
       return;
     }
-    void run("join", () => dispatch(joinScoreboard(trimmed)).unwrap(), "Couldn't join");
+    void run(
+      "join",
+      async () => {
+        const result = await dispatch(joinScoreboard(trimmed));
+        return joinScoreboard.rejected.match(result) ? result : null;
+      },
+      "Couldn't join",
+    );
   };
 
   const onCreate = () => {
@@ -117,7 +114,14 @@ export default function SyncGame() {
       setFormError("Give the game a name");
       return;
     }
-    void run("create", () => dispatch(createScoreboard(name)).unwrap(), "Couldn't create");
+    void run(
+      "create",
+      async () => {
+        const result = await dispatch(createScoreboard(name));
+        return createScoreboard.rejected.match(result) ? result : null;
+      },
+      "Couldn't create",
+    );
   };
 
   /**

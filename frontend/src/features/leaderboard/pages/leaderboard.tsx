@@ -1,34 +1,15 @@
 import { clsx } from "clsx";
-import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { colors } from "../../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../../store";
 import type { Scoreboard } from "../../scoreTracking/domain/Scoreboard";
+import { rejectionReason } from "../../scoreTracking/rejectionReason";
 import { joinScoreboard, loadScoreboards } from "../../scoreTracking/scoreTrackingThunks";
 
 /** The Scoreboard tab, which is where a board that was joined is shown. */
 const SCOREBOARD_ROUTE = "/(main)/(scoreTracking)/scoreTracking";
-
-/**
- * The message a rejected thunk is carrying, or `null` when it is carrying
- * nothing worth putting on screen.
- *
- * Both shapes `unwrap()` can reject with are read, because the thunks use both
- * `rejectWithValue` — which throws the reason itself — and could throw, in which
- * case RTK rejects with a serialised error: a plain object carrying a `message`,
- * not an `Error`, so an `instanceof Error` test would miss it. A blank message
- * counts as no message at all: it renders an empty red line, which is the
- * silence this exists to prevent, one layer down.
- */
-const reasonOf = (rejected: unknown): string | null => {
-  if (typeof rejected === "string") return rejected.trim() === "" ? null : rejected;
-  if (typeof rejected === "object" && rejected !== null && "message" in rejected) {
-    const { message } = rejected as { message: unknown };
-    if (typeof message === "string" && message.trim() !== "") return message;
-  }
-  return null;
-};
 
 const BoardRow = ({
   board,
@@ -49,7 +30,12 @@ const BoardRow = ({
       testID={`board-${board.id}`}
       disabled={isJoining}
       accessibilityRole="button"
+      // The "Open" label below is a child of this pressable, and an
+      // `accessibilityLabel` on the pressable replaces what a screen reader
+      // would otherwise read out — including the fact that this is the board
+      // being played. `selected` is what carries that part.
       accessibilityLabel={`${board.gameName}, ${players} ${players === 1 ? "player" : "players"}, code ${board.code}`}
+      accessibilityState={{ selected: isOpen }}
       className={clsx(
         "border bg-black px-4 py-3 flex-row justify-between items-center",
         isOpen ? "border-primary" : "border-secondary",
@@ -109,27 +95,41 @@ export default function LeaderboardPage() {
    */
   const load = useCallback(async (): Promise<void> => {
     setLoadError(null);
+    // A refusal to join is news about the list as it was, and this is a request
+    // for the list as it is. Left up, it is a message that has stopped being
+    // true with nothing on screen able to take it away.
+    setJoinError(null);
     try {
-      await dispatch(loadScoreboards()).unwrap();
-    } catch (rejected: unknown) {
-      setLoadError(reasonOf(rejected) ?? "Couldn't load games");
+      const result = await dispatch(loadScoreboards());
+      if (loadScoreboards.rejected.match(result)) {
+        setLoadError(rejectionReason(result) ?? "Couldn't load games");
+      }
+    } catch {
+      // Not reachable: `dispatch` of a thunk settles as an action rather than
+      // rejecting, and the thunk catches its own failures. Kept so a thunk that
+      // starts throwing cannot take the tab down with it.
+      setLoadError("Couldn't load games");
     }
   }, [dispatch]);
 
   /**
-   * Fetched on mount and on an explicit retry, and not on every visit.
+   * Re-read on every visit, not on the first one.
    *
-   * A tab navigator keeps a tab mounted once it has been opened, so a game
-   * started on the Join tab after this tab was last loaded does not appear in
-   * this list until the tab is remounted. `useFocusEffect` is the primitive
-   * the Expo Router v57 docs give for a list that has to be right every time the
-   * user comes back to it, and this is where that would go; the reason it is not
-   * here is that the focus it depends on is not reachable from a test that
-   * renders the page on its own, so it would arrive unproven.
+   * A tab navigator keeps a tab mounted once it has been opened, so a list read
+   * on mount alone goes stale for the rest of the session: create a game on the
+   * Join tab, come back here, and the new game is missing with nothing on screen
+   * to say the list is old. The tab exists to find games, and a list that cannot
+   * be brought up to date under-reports — so the read is bound to focus, which is
+   * when the user has just asked to see it.
+   *
+   * The callback is memoised because this is what decides when it re-runs, and
+   * it is a block body so what focus receives is not a promise to wait on.
    */
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   /**
    * Joins a board and goes to it — but only once the server has agreed.
@@ -153,17 +153,24 @@ export default function LeaderboardPage() {
     setJoinError(null);
     setJoining(code);
     try {
-      await dispatch(joinScoreboard(code)).unwrap();
-      router.replace(SCOREBOARD_ROUTE);
-    } catch (rejected: unknown) {
-      setJoinError(reasonOf(rejected) ?? "Couldn't join that game");
+      const result = await dispatch(joinScoreboard(code));
+      if (joinScoreboard.rejected.match(result)) {
+        setJoinError(rejectionReason(result) ?? "Couldn't join that game");
+      } else {
+        router.replace(SCOREBOARD_ROUTE);
+      }
+    } catch {
+      // Not reachable, as in `load`. Kept so an unexpected throw is reported
+      // rather than escaping `void onSelect(…)` as an unhandled rejection, which
+      // would leave the user on this tab with nothing said.
+      setJoinError("Couldn't join that game");
     } finally {
       setJoining(null);
     }
   };
 
-  // "Idle" counts as loading: the load is dispatched from an effect, so the
-  // first frame is `idle` and rendering the list for it would flash an empty
+  // "Idle" counts as loading: the read is dispatched from the focus effect, so
+  // the first frame is `idle` and rendering the list for it would flash an empty
   // board at a user who is about to be shown games.
   if (boardsStatus === "loading" || boardsStatus === "idle") {
     return (
@@ -176,7 +183,26 @@ export default function LeaderboardPage() {
 
   return (
     <ScrollView className="bg-black flex-1" contentContainerClassName="gap-4 p-8 pb-24">
-      <Text className="text-white font-sans-bold text-2xl">All games</Text>
+      {/*
+        A refresh the user can ask for, in every state that has a list — not only
+        after a failure. Refocusing the tab re-reads it, but a user who is
+        already looking at a list that is missing the game they just started is
+        not going to leave and come back; that is what a refresh control is for.
+      */}
+      <View className="flex-row items-center justify-between">
+        <Text className="text-white font-sans-bold text-2xl">All games</Text>
+        <Pressable
+          onPress={() => {
+            void load();
+          }}
+          testID="boards-refresh"
+          accessibilityRole="button"
+          accessibilityLabel="Reload the list of games"
+          className="border border-primary px-3 py-1"
+        >
+          <Text className="text-white font-sans-medium text-lg">Refresh</Text>
+        </Pressable>
+      </View>
 
       {/*
         Above the list, not in place of it: a board another player has already
@@ -185,25 +211,10 @@ export default function LeaderboardPage() {
         as the empty state below.
       */}
       {boardsStatus === "error" && (
-        <View className="border border-red-500 gap-4 p-4">
+        <View className="border border-red-500 p-4">
           <Text testID="boards-error" className="text-red-500 font-sans-bold text-lg">
             {loadError ?? "Couldn't load games"}
           </Text>
-          {/*
-            A retry, because there is one to make: the list is a plain read, and
-            a tab navigator keeps this screen mounted, so leaving and coming
-            back would not fetch it again. Without this, one failed request on a
-            dead network is a tab that stays wrong for the rest of the session.
-          */}
-          <Pressable
-            onPress={() => {
-              void load();
-            }}
-            testID="boards-retry"
-            className="border border-primary px-6 py-3 self-start"
-          >
-            <Text className="text-white font-sans-medium text-lg">Retry</Text>
-          </Pressable>
         </View>
       )}
 

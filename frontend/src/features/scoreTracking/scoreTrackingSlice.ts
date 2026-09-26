@@ -1,6 +1,7 @@
 import { createSlice, type Action, type PayloadAction } from "@reduxjs/toolkit";
 import type { ConnectionStatus } from "./domain/ScoreboardService";
 import type { Scoreboard } from "./domain/Scoreboard";
+import { rejectionReason } from "./rejectionReason";
 
 /** Load state for the leaderboard tab's own list, which no board event touches. */
 export type BoardsStatus = "idle" | "loading" | "ready" | "error";
@@ -14,36 +15,6 @@ export type BoardsStatus = "idle" | "loading" | "ready" | "error";
 const INTENT_FULFILLED = "scoreboard/intent/fulfilled";
 const INTENT_REJECTED = "scoreboard/intent/rejected";
 const DELETE_REJECTED = "scoreboard/delete/rejected";
-
-/** A message is worth showing only if there is something in it. */
-const isAMessage = (candidate: unknown): candidate is string =>
-  typeof candidate === "string" && candidate.trim().length > 0;
-
-/**
- * What a rejected action has to say, or `null` when it says nothing.
- *
- * `rejectWithValue` — which every thunk here does — carries the reason in
- * `payload`. A thunk that *threw* instead carries none there and puts the reason
- * on `error.message`, so that is read, and it is read second for a reason: RTK
- * builds `error` as `miniSerializeError(error || "Rejected")`, so a payload that
- * is present but empty leaves a *placeholder* on `error.message` rather than a
- * real one. Falling through to it would answer a thunk's empty `rejectWithValue`
- * with the word "Rejected" on the scoreboard.
- *
- * A payload that is present but says nothing is therefore answered with nothing
- * at all, and the previous error is left as it was. Same for a message that is
- * empty: storing `""` in a `string | null` field renders an empty red banner,
- * which is the same silence this helper exists to prevent, one layer down.
- */
-const rejectionMessage = (action: {
-  payload?: unknown;
-  error?: { message?: string };
-}): string | null => {
-  if (action.payload !== undefined) {
-    return isAMessage(action.payload) ? action.payload : null;
-  }
-  return isAMessage(action.error?.message) ? action.error.message : null;
-};
 
 export interface ScoreboardState {
   current: Scoreboard | null;
@@ -171,6 +142,12 @@ const scoreboardSlice = createSlice({
    *
    * `addCase` given a type string infers a bare `Action`, which carries no
    * `payload`; the `& Action<…>` on each rejection is what lets it read one.
+   *
+   * What to make of that action is `rejectionReason`, which lives outside this
+   * module because two pages ask the same question and each was reading it its
+   * own way — and the ways did not agree. The payload-first order is not a
+   * detail: read from `error` first, a perfectly good `rejectWithValue` message
+   * is answered with RTK's "Rejected" placeholder.
    */
   extraReducers: (builder) => {
     builder
@@ -180,14 +157,14 @@ const scoreboardSlice = createSlice({
       .addCase(
         INTENT_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof INTENT_REJECTED>) => {
-          const message = rejectionMessage(action);
+          const message = rejectionReason(action);
           if (message !== null) state.error = message;
         },
       )
       .addCase(
         DELETE_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof DELETE_REJECTED>) => {
-          const message = rejectionMessage(action);
+          const message = rejectionReason(action);
           if (message !== null) state.error = message;
         },
       );
