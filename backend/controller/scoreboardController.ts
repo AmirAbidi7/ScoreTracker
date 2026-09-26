@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 import type { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
-import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDTO";
+import type { ScoreboardCreateRequest } from "../dto/ScoreboardDTO";
 import type { ApiError } from "../errors/errors";
 import {
   ScoreboardService,
@@ -24,10 +24,6 @@ export type ScoreboardControllerInterface = {
     res: Response,
   ) => Effect.Effect<void, ApiError>;
   readonly getScoreboards: (req: Request, res: Response) => Effect.Effect<void, ApiError>;
-  readonly updateScoreboard: (
-    req: Request<{}, {}, { scoreboard: ScoreboardDTO }>,
-    res: Response,
-  ) => Effect.Effect<void, ApiError>;
   readonly deleteScoreboard: (
     req: Request<{ id: string }>,
     res: Response,
@@ -64,15 +60,11 @@ const getScoreboards =
       res.status(StatusCodes.OK).json(scoreboards);
     });
 
-const updateScoreboard =
-  (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
-  (req: Request<{}, {}, { scoreboard: ScoreboardDTO }>, res: Response) =>
-    Effect.gen(function* () {
-      const scoreboard = yield* scoreboardService.updateScoreboard(req.body.scoreboard);
-      yield* scoreboardSocket.updateScoreboard(scoreboard);
-      res.status(StatusCodes.OK).json(scoreboard);
-    });
-
+/**
+ * No `updateScoreboard` here, deliberately. It took a board from the request body
+ * and wrote it, so any HTTP client could author a score — which is the one thing
+ * the intents path exists to prevent. See the note in `routes/scoreboardController.ts`.
+ */
 const deleteScoreboard =
   (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
   (req: Request<{ id: string }>, res: Response) =>
@@ -100,7 +92,6 @@ export const ScoreboardControllerLive = Layer.effect(
       createScoreboard: createScoreboard(scoreboardService),
       getScoreboard: getScoreboard(scoreboardService),
       getScoreboards: getScoreboards(scoreboardService),
-      updateScoreboard: updateScoreboard(scoreboardService, scoreboardSocket),
       deleteScoreboard: deleteScoreboard(scoreboardService, scoreboardSocket),
       joinScoreboard: joinScoreboard(scoreboardService),
     };

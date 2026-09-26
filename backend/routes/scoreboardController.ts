@@ -1,9 +1,17 @@
 import { Router, type Request, type Response } from "express";
 import { ScoreboardController } from "../controller/scoreboardController";
-import type { ScoreboardDTO } from "../dto/ScoreboardDTO";
 import { runController } from "../utils/controllerHelper";
 import { appServices } from "../utils/layers";
 
+/**
+ * There is no `PUT /api/scoreboard`, and that is the point.
+ *
+ * It took a whole board — `players`, `code`, `gameName` — from the request body
+ * and wrote it, then broadcast the result to the room: the one path left in which
+ * a client could author a score. Nothing in the app called it, and the intents
+ * path (`scoreboard:intent` → `applyIntent`) is the only supported way to change
+ * a board. Do not add a REST write back, and do not re-add this one.
+ */
 const { scoreboardController } = appServices();
 
 export const scoreboardRouter = Router();
@@ -15,9 +23,6 @@ scoreboardRouter
   )
   .get((req: Request, res: Response) =>
     runController(scoreboardController.getScoreboards(req, res), res),
-  )
-  .put((req: Request<{}, {}, { scoreboard: ScoreboardDTO }>, res: Response) =>
-    runController(scoreboardController.updateScoreboard(req, res), res),
   );
 
 // Registered before `/:id` so a code can never be read as an id. The segment

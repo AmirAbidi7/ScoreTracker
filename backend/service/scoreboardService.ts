@@ -40,6 +40,13 @@ const boardColumns = {
   updateTime: scoreboardsTable.updateTime,
 };
 
+/**
+ * Reads and the one deletion. There is deliberately no "write this board" method:
+ * a client's word about a score is an intent, and `applyIntent` in
+ * `scoreboardIntentService.ts` is the only thing that turns one into a board.
+ * A wholesale write would let any caller — and any future HTTP route — author
+ * scores, which is the invariant the whole design turns on.
+ */
 export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
     scoreboardRequest: ScoreboardCreateRequest,
@@ -48,9 +55,6 @@ export type ScoreboardServiceInterface = {
     id: string,
   ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError>;
   readonly getScoreboards: () => Effect.Effect<ScoreboardDTO[], InternalServerError>;
-  readonly updateScoreboard: (
-    Scoreboard: ScoreboardDTO,
-  ) => Effect.Effect<ScoreboardDTO, InternalServerError | NotFoundError>;
   readonly deleteScoreboard: (
     scoreboardId: string,
   ) => Effect.Effect<string, InternalServerError | NotFoundError>;
@@ -146,41 +150,13 @@ const deleteScoreboard = (db: Db) => (id: string) =>
     return value.code;
   });
 
-const updateScoreboard = (db: Db) => (scoreboard: ScoreboardDTO) =>
-  Effect.gen(function* () {
-    // The client doesn't author the ordering token: drop `updateTime` from the
-    // write so the column's `$onUpdate` bumps it to server time instead of
-    // echoing a stale client value that other clients would then discard.
-    const { updateTime: _updateTime, ...updatable } = scoreboard;
-    const newScoreboards = yield* Effect.tryPromise({
-      try: () =>
-        db
-          .update(scoreboardsTable)
-          .set({ ...updatable })
-          .where(eq(scoreboardsTable.id, scoreboard.id))
-          .returning(boardColumns),
-      catch: () => new InternalServerError({ message: `Internal Server Error` }),
-    });
-    const newScoreboard = newScoreboards[0];
-
-    if (!newScoreboard) {
-      return yield* Effect.fail(
-        new NotFoundError({
-          message: `Couldn't find a scoreboard with id:${scoreboard.id}`,
-        }),
-      );
-    }
-
-    return toScoreboardDTO(newScoreboard);
-  });
-
 /**
  * The read half of `applyIntentToCode`, exported for it.
  *
- * Both halves have to run against the *same* `db`. It used to reach this read
- * through an injected `ScoreboardService`, which carries its own pool, so the
- * read and the write that depended on it were two unrelated connections: no
- * transaction could ever have made them atomic together.
+ * Both halves have to run against the *same* `db`. That service used to reach
+ * this read through an injected `ScoreboardService`, which carries its own pool,
+ * so the read and the write that depended on it were two unrelated connections:
+ * no transaction could ever have made them atomic together.
  */
 export const getScoreboardByCode = (db: Db) => (code: string) =>
   Effect.gen(function* () {
@@ -213,7 +189,6 @@ export const ScoreboardServiceLive = Layer.effect(
       createScoreboard: createScoreboard(db),
       getScoreboard: getScoreboard(db),
       getScoreboards: getScoreboards(db),
-      updateScoreboard: updateScoreboard(db),
       deleteScoreboard: deleteScoreboard(db),
       joinScoreboard: joinScoreboard(db),
       getScoreboardByCode: getScoreboardByCode(db),
