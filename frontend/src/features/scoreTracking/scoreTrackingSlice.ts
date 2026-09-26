@@ -43,16 +43,32 @@ const scoreboardSlice = createSlice({
      * board, so `updateScore`/`addPlayer`/`removePlayer` are NOT reducers —
      * they are thunks that send intents and wait for the broadcast.
      *
-     * The `updateTime` guard is what makes ack-and-broadcast double delivery
-     * safe: the sender may receive its own ack after another client's newer
-     * broadcast, and applying that stale board would visibly rewind the score.
-     * It is strictly `>`: an identical timestamp is a redelivery, not a newer
-     * board, and the gateway does emit one redundantly on the first connect.
+     * A board with a *different* `id` is the user switching games, and it is
+     * applied unconditionally. Ordering is a statement about one board, and it
+     * was read as a statement about all of them: joining an older board from the
+     * leaderboard was silently dropped, and the screen kept showing the previous
+     * game while the gateway had already switched `current`, joined the new room
+     * and written the new session. `sendIntent` then posts this board's
+     * `playerId` to the new board's `code` — and player ids restart at 1 per
+     * board, so they collide and the taps *succeed* on the wrong game, looking
+     * entirely correct to the user.
+     *
+     * Nothing can be stranded by trusting the switch: `teardown` detaches the old
+     * socket's handlers before disconnecting, so once the new board is on its way
+     * no further broadcast from the previous one can be emitted, and a
+     * re-read still in flight is refused by `stillTracking` on the board id.
+     *
+     * Within one board the `updateTime` guard is what makes ack-and-broadcast
+     * double delivery safe: the sender may receive its own ack after another
+     * client's newer broadcast, and applying that stale board would visibly
+     * rewind the score. It is strictly `>`: an identical timestamp is a
+     * redelivery, not a newer board, and the gateway does emit one redundantly
+     * on the first connect.
      */
     applyBoard: (state, action: PayloadAction<Scoreboard>) => {
       const incoming = action.payload;
 
-      if (state.current === null) {
+      if (state.current === null || incoming.id !== state.current.id) {
         state.current = incoming;
         return;
       }
@@ -96,8 +112,9 @@ const scoreboardSlice = createSlice({
     /**
      * Leaving a board. `boards` and `boardsStatus` survive: that list is the
      * leaderboard tab's data and says nothing about which board is open.
-     * Nulling `current` is also what lets a board older than the current one be
-     * applied afterwards — the ordering guard only ever moves forward.
+     * Nulling `current` is not what makes another board appliable — `applyBoard`
+     * switches on a differing id — but it is what leaves the store honest about
+     * there being no board at all, which is what the empty state renders.
      */
     resetScoreboard: (state) => {
       state.current = null;

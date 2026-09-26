@@ -82,6 +82,46 @@ describe("scoreboardSlice", () => {
   });
 
   /**
+   * A *different* board is a switch, not a late delivery, and its timestamp says
+   * nothing about the board it replaces. This is the leaderboard path: joining a
+   * game that was created before the one already on screen. Guarding on
+   * `updateTime` alone left the previous game on the screen while the gateway
+   * had already moved to the new one, and because player ids restart at 1 per
+   * board the ids collided — `sendIntent` then credited the old game's player to
+   * the new game's board and it *looked* like it worked.
+   */
+  test("a different board replaces the current one however old its timestamp is", () => {
+    const olderGame: Scoreboard = {
+      id: "b2",
+      gameName: "Catan",
+      code: "ZZ99YY",
+      // The colliding id is the point: id 1 is a different person on this board.
+      players: [{ id: 1, name: "Bo", score: 12 }],
+      updateTime: "2026-09-01T00:00:00.000Z",
+    };
+
+    const withGame = reducer(initial, applyBoard(board));
+    expect(reducer(withGame, applyBoard(olderGame)).current).toEqual(olderGame);
+  });
+
+  /** And back again, because a switch that only works one way is still a trap. */
+  test("switching back to the first board applies it too", () => {
+    const secondGame: Scoreboard = {
+      id: "b2",
+      gameName: "Catan",
+      code: "ZZ99YY",
+      players: [{ id: 1, name: "Bo", score: 12 }],
+      updateTime: "2026-09-26T10:00:00.000Z",
+    };
+
+    const away = reducer(reducer(initial, applyBoard(board)), applyBoard(secondGame));
+    expect(away.current).toEqual(secondGame);
+
+    // Back to the first game, whose timestamp is now the older of the two.
+    expect(reducer(away, applyBoard(board)).current).toEqual(board);
+  });
+
+  /**
    * The gateway re-reads the board over REST on every `connect`, and
    * `enterBoard` has already emitted one, so the very first `board` event
    * arrives twice. The second delivery is a *different object* with the same
