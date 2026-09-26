@@ -41,18 +41,30 @@ const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
 /**
- * Awaits a promise and turns a rejection into a value, so one staleness check
- * can gate both outcomes. A `try`/`catch` around the read would need that check
- * repeated in each arm, and an arm that forgot it would commit a board the app
- * has already moved on from.
+ * Runs `read` and turns a failure into a value, so one staleness check can gate
+ * both outcomes. A `try`/`catch` around the read would need that check repeated
+ * in each arm, and an arm that forgot it would commit a board the app has
+ * already moved on from.
+ *
+ * The thunk is load-bearing, not stylistic. `ApiClient`'s methods are not
+ * `async`, and `encodePathSegment` throws for an unpaired surrogate, so a read
+ * can fail *before* it returns a promise. Passing such a call as an argument
+ * evaluates it first, and the throw would escape the caller entirely — and that
+ * caller is `void this.resync(...)`, which discards it as an unhandled
+ * rejection. The call happens in here instead, where a throw and a rejection
+ * arrive at the same handler.
  */
 const settle = <T>(
-  promise: Promise<T>,
+  read: () => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false; message: string }> =>
-  promise.then(
-    (value) => ({ ok: true, value }),
-    (error: unknown) => ({ ok: false, message: messageOf(error) }),
-  );
+  // `Promise.resolve().then(read)` invokes `read` inside a then-callback, which
+  // turns a synchronous throw into a rejection for the handler below to catch.
+  Promise.resolve()
+    .then(read)
+    .then(
+      (value) => ({ ok: true, value }),
+      (error: unknown) => ({ ok: false, message: messageOf(error) }),
+    );
 
 /**
  * Owns the REST client and the socket, and nothing else.
@@ -192,7 +204,7 @@ export class ScoreboardService {
     if (!board) return;
     const boardId = board.id;
 
-    const read = await settle(this.api.getScoreboard(boardId));
+    const read = await settle(() => this.api.getScoreboard(boardId));
 
     // One gate on every commit below. See `stillTracking`.
     if (!this.stillTracking(socket, boardId)) return;

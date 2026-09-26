@@ -286,6 +286,32 @@ describe("ScoreboardService", () => {
     expect(service.currentCode).toBe("AB12CD");
   });
 
+  test("a re-read that throws synchronously is reported and the room is still re-joined", async () => {
+    const socket = makeFakeSocket();
+    // `ApiClient` methods are not `async`, and `encodePathSegment` throws for an
+    // unpaired surrogate, so the read can fail *before* it returns a promise.
+    // `makeApi`'s other doubles are all async, so nothing else covers this.
+    const getScoreboard = jest.fn(() => {
+      throw new Error('Cannot build a request URL from "\\ud800"');
+    });
+    const { service, events } = build(socket, makeApi({ getScoreboard }));
+    await service.joinScoreboard("AB12CD");
+
+    fireDisconnect(socket);
+    fireConnect(socket);
+    await flushAsync();
+
+    // A synchronous throw is a failure to report, not a rejection to drop on the
+    // floor: `void this.resync(...)` would discard it entirely.
+    expect(events).toContainEqual({
+      type: "error",
+      message: 'Cannot build a request URL from "\\ud800"',
+    });
+    // Same as any other failed re-read: the room is re-joined anyway.
+    expect(joinsOn(socket)).toBe(2);
+    expect(service.currentCode).toBe("AB12CD");
+  });
+
   test("a re-read that lands after the user has left does not resurrect the board", async () => {
     const socket = makeFakeSocket();
     const reRead = deferred<Scoreboard>();
