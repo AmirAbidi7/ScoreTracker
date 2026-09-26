@@ -14,6 +14,7 @@ export type BoardsStatus = "idle" | "loading" | "ready" | "error";
  */
 const INTENT_FULFILLED = "scoreboard/intent/fulfilled";
 const INTENT_REJECTED = "scoreboard/intent/rejected";
+const LEAVE_REJECTED = "scoreboard/leave/rejected";
 const DELETE_REJECTED = "scoreboard/delete/rejected";
 
 export interface ScoreboardState {
@@ -174,6 +175,18 @@ const scoreboardSlice = createSlice({
       .addCase(
         INTENT_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof INTENT_REJECTED>) => {
+          const message = rejectionReason(action);
+          if (message !== null) state.error = message;
+        },
+      )
+      .addCase(
+        LEAVE_REJECTED,
+        (state, action: PayloadAction<string> & Action<typeof LEAVE_REJECTED>) => {
+          // The leave path used to be unreachable from the UI, so a refused leave
+          // had nowhere to land: the thunk keeps the board — correctly, a user who
+          // is still in a game must not be shown as out of it — and the screen
+          // that asked to leave sat there having said nothing. One case, beside
+          // the two it matches.
           const message = rejectionReason(action);
           if (message !== null) state.error = message;
         },

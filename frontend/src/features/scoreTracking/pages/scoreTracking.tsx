@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Plus, Trash } from "lucide-react-native";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { colors } from "../../../../constants/theme";
@@ -10,6 +11,14 @@ import {
   leaveScoreboard,
   sendIntent,
 } from "../scoreTrackingThunks";
+
+/**
+ * The Join tab, which is where a user with no board has something to do next.
+ * Written out rather than shared with `useScoreboardSync`: this page navigates
+ * after a leave it asked for, and the hook navigates after a delete that
+ * happened elsewhere, and neither is worth a module for one string.
+ */
+const JOIN_ROUTE = "/(main)/(scoreTracking)/syncGame";
 
 const AddPlayerModal = ({
   active,
@@ -197,6 +206,37 @@ export default function ScoreTrackingPage() {
     ]);
   };
 
+  /**
+   * Leaving, and then going where a user with no board can do something.
+   *
+   * Until this existed, `leaveScoreboard` was dispatched from exactly one place
+   * and that place only renders when there is no board to leave — so the leave
+   * path was dead, and a user who opened a game could not get out of it, short
+   * of deleting it. The confirmation is the same gate deleting the game uses: a
+   * single tap must not be enough to walk away from a game in progress, and
+   * leaving is the one control here that a pocket press would otherwise reach.
+   *
+   * Navigating only once the leave has actually happened. A refused leave keeps
+   * the board, and moving the user off a game they are still in — with nothing
+   * said about why — is the confusing half of that pair.
+   */
+  const confirmLeave = async () => {
+    const result = await dispatch(leaveScoreboard());
+    if (leaveScoreboard.rejected.match(result)) return;
+    router.replace(JOIN_ROUTE);
+  };
+
+  const onLeave = () => {
+    Alert.alert(
+      "Leave game?",
+      `You will stop following ${current?.gameName}. The game stays on the leaderboard and anyone can rejoin with the code ${current?.code}.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Leave", style: "destructive", onPress: () => void confirmLeave() },
+      ],
+    );
+  };
+
   if (!current) {
     return (
       <View className="bg-black flex-1 items-center justify-center gap-4 px-8" testID="empty-state">
@@ -237,6 +277,24 @@ export default function ScoreTrackingPage() {
           <Text className="text-primary font-sans-bold text-md">{current.code}</Text>
         </View>
       </Pressable>
+
+      {/*
+        Its own row, and not inside the header: the header is a long press that
+        deletes the game, and a control that deletes and a control that leaves
+        should not be the same surface.
+      */}
+      <View className="mx-8 flex-row items-center">
+        <Pressable
+          onPress={onLeave}
+          testID="leave-game"
+          accessibilityRole="button"
+          accessibilityLabel={`Leave ${current.gameName}`}
+          accessibilityHint="Asks before you leave. The game stays on the leaderboard"
+          className="border border-secondary px-4 py-2"
+        >
+          <Text className="text-secondary font-sans-medium text-lg">Leave</Text>
+        </Pressable>
+      </View>
 
       {(status === "connecting" || status === "reconnecting" || status === "offline") && (
         <Text testID="connection-banner" className="mx-8 text-yellow-500 font-sans-medium text-md">

@@ -1,8 +1,10 @@
 /// <reference types="jest" />
 import { configureStore } from "@reduxjs/toolkit";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { router } from "expo-router";
 import { Alert } from "react-native";
 import { Provider } from "react-redux";
+import { tabs } from "../constants/data";
 import type { ScoreboardAck } from "../infrastructure/socket/scoreboardSocket";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 import {
@@ -35,7 +37,27 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   },
 }));
 
+/**
+ * Navigation is the one thing this page asks of the navigator, and it is not
+ * what these tests are about — the real `router.replace` outside a mounted root
+ * layout only warns, and the path is asserted below against `constants/data.ts`
+ * rather than taken on trust.
+ */
+jest.mock("expo-router", () => ({ router: { replace: jest.fn() } }));
+
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
+const replace = router.replace as jest.MockedFunction<typeof router.replace>;
+
+/**
+ * The tab a user with no board can act from, derived rather than written out.
+ * The redirect is a string, so a typo in it typechecks and then navigates to
+ * nothing at all.
+ */
+const joinRoute = () => {
+  const joinTab = tabs.find((tab) => tab.title === "Join");
+  if (!joinTab) throw new Error("constants/data.ts has no Join tab");
+  return `/(main)/${joinTab.name}`;
+};
 
 /**
  * Deliberately not in score order. Anything that ranked by array position
@@ -86,11 +108,15 @@ const scored = (score: number): ScoreboardAck => ({
 });
 
 /** The buttons the page handed to the platform `Alert`. */
-const alertButtons = (alert: jest.SpiedFunction<typeof Alert.alert>, index = 0) => {
+const alertButtons = (
+  alert: jest.SpiedFunction<typeof Alert.alert>,
+  confirmText: "Delete" | "Leave" = "Delete",
+  index = 0,
+) => {
   const buttons = alert.mock.calls[index][2] ?? [];
   return {
     cancel: buttons.find((button) => button.text === "Cancel"),
-    confirm: buttons.find((button) => button.text === "Delete"),
+    confirm: buttons.find((button) => button.text === confirmText),
   };
 };
 
@@ -547,5 +573,107 @@ describe("deleting the game", () => {
     );
     expect(store.getState().scoreboard.current).toEqual(board);
     expect(screen.queryByTestId("empty-state")).toBeNull();
+  });
+});
+
+/**
+ * Leaving. `leaveScoreboard` was dispatched from exactly one place, and that
+ * place only renders when `current === null` — so the leave path was dead code
+ * in the shipping UI and a user who opened a game could not get out of it short
+ * of deleting it.
+ */
+describe("leaving the game", () => {
+  let alert: jest.SpiedFunction<typeof Alert.alert>;
+
+  beforeEach(() => {
+    alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  });
+
+  it("offers a way out while a game is open", async () => {
+    await renderPage((store) => store.dispatch(applyBoard(board)));
+
+    const leave = screen.getByTestId("leave-game");
+    // A screen reader has to be able to name it, and the label carries which game
+    // it would leave — the visible word is only "Leave".
+    expect(leave.props.accessibilityLabel).toBe("Leave Catan");
+  });
+
+  it("offers none when there is no game to leave", async () => {
+    // The empty state's own control is a dismiss, and that is the only thing
+    // there is to press: nothing to leave, and nothing offered to leave it with.
+    await renderPage();
+
+    expect(screen.queryByTestId("leave-game")).toBeNull();
+    expect(screen.getByTestId("empty-state-dismiss")).toBeOnTheScreen();
+  });
+
+  it("asks first, naming the game and how to get back in", async () => {
+    await renderPage((store) => store.dispatch(applyBoard(board)));
+
+    expect(alert).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId("leave-game"));
+
+    expect(alert).toHaveBeenCalledTimes(1);
+    const [title, message] = alert.mock.calls[0];
+    expect(title).toBe("Leave game?");
+    expect(message).toContain("Catan");
+    // The game is not deleted by leaving, so the way back has to be said here
+    // rather than discovered afterwards.
+    expect(message).toContain("AB12CD");
+    // Nothing has been sent yet: the alert is the gate, not a formality. One tap
+    // must not be enough to walk away from a game in progress.
+    expect(service.leaveScoreboard).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("stays in the game when the confirmation is cancelled", async () => {
+    const store = await renderPage((s) => s.dispatch(applyBoard(board)));
+    await fireEvent.press(screen.getByTestId("leave-game"));
+
+    const { cancel, confirm } = alertButtons(alert, "Leave");
+    expect(cancel?.style).toBe("cancel");
+    expect(confirm?.style).toBe("destructive");
+    // Cancel is not a quieter leave: it has no handler at all.
+    expect(cancel?.onPress).toBeUndefined();
+
+    await pressAlertButton(cancel, "Cancel");
+
+    expect(service.leaveScoreboard).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    expect(store.getState().scoreboard.current).toEqual(board);
+  });
+
+  it("leaves and goes to the tab where another game can be joined", async () => {
+    const store = await renderPage((s) => s.dispatch(applyBoard(board)));
+    await fireEvent.press(screen.getByTestId("leave-game"));
+
+    await pressAlertButton(alertButtons(alert, "Leave").confirm, "Leave");
+
+    expect(service.leaveScoreboard).toHaveBeenCalledTimes(1);
+    // The thunk cleared the session, so the store has no board and the page falls
+    // back to the empty state…
+    await screen.findByTestId("empty-state");
+    expect(store.getState().scoreboard.current).toBeNull();
+    // …and the user is put where they can do something about that, rather than on
+    // a screen whose only remaining action is a dismiss.
+    expect(replace).toHaveBeenCalledWith(joinRoute());
+  });
+
+  it("keeps the game and says why when the leave is refused", async () => {
+    service.leaveScoreboard.mockRejectedValue(new Error("Bad gateway"));
+    const store = await renderPage((s) => s.dispatch(applyBoard(board)));
+    await fireEvent.press(screen.getByTestId("leave-game"));
+
+    await pressAlertButton(alertButtons(alert, "Leave").confirm, "Leave");
+
+    // The user is still in the game, so they must still be on its screen — and
+    // told why nothing happened, rather than left tapping a control that does
+    // nothing.
+    await waitFor(() =>
+      expect(screen.getByTestId("scoreboard-error")).toHaveTextContent("Bad gateway"),
+    );
+    expect(store.getState().scoreboard.current).toEqual(board);
+    expect(screen.queryByTestId("empty-state")).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
   });
 });
