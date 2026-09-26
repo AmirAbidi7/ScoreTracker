@@ -21,6 +21,20 @@ const captureError = async (promise: Promise<unknown>): Promise<unknown> =>
     (reason: unknown) => reason,
   );
 
+/**
+ * The synchronous counterpart, for the one failure thrown before a promise
+ * exists: `encodePathSegment` rejects its input by throwing, and the client
+ * methods are not `async`.
+ */
+const captureThrown = (call: () => unknown): unknown => {
+  try {
+    call();
+  } catch (error: unknown) {
+    return error;
+  }
+  throw new Error("expected the call to throw, but it returned");
+};
+
 const board = {
   id: "11111111-1111-1111-1111-111111111111",
   gameName: "Catan",
@@ -190,6 +204,71 @@ describe("ApiClient", () => {
       'Cannot build a request URL from "\\ud800"',
     );
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("the two status 0 failures are told apart by failure, not by status", async () => {
+    // Both never reached the server, so `status` is `0` for both and has to
+    // stay `0` for both — `isOffline` means "never reached the server" and
+    // nothing may repurpose it. `failure` is the only thing that separates a
+    // dead network from a request this client refused to build, and a UI that
+    // gets it wrong either blames the network for the user's typing or hides
+    // a dead one behind a raw platform string.
+    const unreachable = makeClient(
+      jest.fn().mockRejectedValue(new TypeError("Network request failed")) as unknown as typeof fetch,
+    );
+    const unencodable = makeClient(jest.fn().mockReturnValue(ok(board)) as unknown as typeof fetch);
+
+    const transport = (await captureError(unreachable.listScoreboards())) as ApiClientError;
+    const unbuilt = captureThrown(() => unencodable.joinScoreboard("\uD800")) as ApiClientError;
+
+    // The shared half: neither reached the server, so both are offline.
+    expect(transport.status).toBe(0);
+    expect(unbuilt.status).toBe(0);
+    expect(transport.isOffline).toBe(true);
+    expect(unbuilt.isOffline).toBe(true);
+
+    // The part that has to differ.
+    expect(transport.failure).toBe("transport");
+    expect(unbuilt.failure).toBe("unencodable-value");
+
+    // And the transport error keeps the platform's own wording, so a UI that
+    // shows `message` verbatim would show "Network request failed".
+    expect(transport.message).toBe("Network request failed");
+  });
+
+  test("failure defaults to transport for every other error this client reports", async () => {
+    // A real HTTP status, a body that could not be parsed, and a rejection
+    // carrying no message all describe the same thing to a user: talking to
+    // the server went wrong. None is the unbuildable-request case, and none
+    // should need to pass a tag to say so.
+    const serverError = makeClient(
+      jest
+        .fn()
+        .mockReturnValue(
+          Promise.resolve(
+            new Response(JSON.stringify({ message: "boom", code: 500 }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            }),
+          ),
+        ) as unknown as typeof fetch,
+    );
+    const unreadable = makeClient(
+      jest
+        .fn()
+        .mockReturnValue(
+          Promise.resolve(new Response("<!doctype html>", { status: 200 })),
+        ) as unknown as typeof fetch,
+    );
+    const silent = makeClient(jest.fn().mockRejectedValue("boom") as unknown as typeof fetch);
+
+    for (const error of [
+      (await captureError(serverError.listScoreboards())) as ApiClientError,
+      (await captureError(unreadable.listScoreboards())) as ApiClientError,
+      (await captureError(silent.listScoreboards())) as ApiClientError,
+    ]) {
+      expect(error.failure).toBe("transport");
+    }
   });
 
   test("deleteScoreboard resolves undefined on a 204 and sends DELETE", async () => {

@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import { configureStore } from "@reduxjs/toolkit";
-import { ApiClientError } from "../infrastructure/api/client";
+import { ApiClient, ApiClientError } from "../infrastructure/api/client";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 import { scoreboardService, type ScoreboardService } from "../src/features/scoreTracking/domain/ScoreboardService";
 import {
@@ -63,12 +63,66 @@ type TestStore = ReturnType<typeof makeStore>;
 const state = (store: TestStore) => store.getState().scoreboard;
 
 /**
+ * The error a real dead network produces, built the way the app builds it: a
+ * React Native `fetch` rejection carrying the platform's own wording, run
+ * through the real client.
+ *
+ * Hand-writing `new ApiClientError("Can't reach the server", 0)` instead would
+ * assert that the client's own substitution survives a round trip through
+ * itself — which passes whether or not `describeError` works, and hides the
+ * actual failure: `ApiClient` only substitutes that string when the cause
+ * carries no message, and every real `fetch` rejection carries one.
+ */
+const transportFailureFrom = async (cause: unknown): Promise<ApiClientError> => {
+  const client = new ApiClient({
+    baseUrl: "https://api.test",
+    fetchImpl: () => Promise.reject(cause),
+  });
+
+  try {
+    await client.listScoreboards();
+  } catch (error: unknown) {
+    return error as ApiClientError;
+  }
+  throw new Error("expected the request to fail, but it resolved");
+};
+
+/**
+ * The error for a code the client cannot put in a URL, produced by the real
+ * client so that the discriminator is not hand-picked here — hand-writing
+ * `new ApiClientError(msg, 0, "unencodable-value")` would make this test an
+ * assertion about the literal it just typed.
+ *
+ * Synchronous by construction: `encodePathSegment` throws before a request
+ * exists, and the client methods are not `async`.
+ */
+const unencodableFailureFor = (code: string): ApiClientError => {
+  const fetchImpl = jest.fn(() => Promise.reject(new Error("must never be sent")));
+  const client = new ApiClient({
+    baseUrl: "https://api.test",
+    fetchImpl: fetchImpl as unknown as typeof fetch,
+  });
+
+  try {
+    void client.joinScoreboard(code);
+  } catch (error: unknown) {
+    return error as ApiClientError;
+  }
+  throw new Error("expected the client to refuse the code, but it built a request");
+};
+
+/**
  * Real storage promises in `beforeEach`, not bare `jest.fn()`s. The thunks call
  * `.catch()` on the result of both session helpers, and a mock returning
  * `undefined` would fail on that rather than on anything worth testing.
+ *
+ * `resetAllMocks` rather than `clearAllMocks`, which leaves implementations in
+ * place: an implementation set by one test would otherwise still be answering
+ * in the next one, so a test that forgets to set its own would silently run
+ * against the previous test's stub instead of failing.
  */
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   readSession.mockResolvedValue(null);
   writeSession.mockResolvedValue(undefined);
   clearSession.mockResolvedValue(undefined);
@@ -192,28 +246,58 @@ describe("sendIntent: a rejected intent never moves the board", () => {
 describe("describeError", () => {
   it("surfaces the URL-encoding message for a code the client cannot send", async () => {
     // Six UTF-16 units, so it clears the length check, and it carries an
-    // unpaired surrogate, so `encodePathSegment` throws before the request is
-    // built. That error is `status: 0` — the same status as being offline —
-    // and telling the user the server is unreachable would blame the network
-    // for their own input and discard the only diagnostic.
+    // unpaired surrogate, so the real client refuses to build a request. That
+    // is also `status: 0` — the same status as being offline — and telling the
+    // user the server is unreachable would blame the network for their own
+    // input and discard the only diagnostic.
     const unencodable = "\ud800abcde";
     expect(unencodable).toHaveLength(6);
     // What the client would really be handed: the code survives `normalizeCode`,
     // uppercased, surrogate and all.
     const normalized = "\ud800ABCDE";
-    const encodingMessage = `Cannot build a request URL from ${JSON.stringify(normalized)}`;
-    service.joinScoreboard.mockRejectedValue(new ApiClientError(encodingMessage, 0));
+    const failure = unencodableFailureFor(normalized);
+    expect(failure.isOffline).toBe(true);
+    service.joinScoreboard.mockRejectedValue(failure);
     const store = makeStore();
 
     const action = await store.dispatch(joinScoreboard(unencodable));
 
     expect(action.type).toBe("scoreboard/join/rejected");
     expect(action.payload).not.toBe("Can't reach the server");
-    expect(action.payload).toBe(encodingMessage);
+    expect(action.payload).toBe(`Cannot build a request URL from ${JSON.stringify(normalized)}`);
     expect(service.joinScoreboard).toHaveBeenCalledWith(normalized);
   });
 
-  it("keeps the client's own wording for a genuine transport failure", async () => {
+  it("shows the friendly wording for a real dead-network failure", async () => {
+    // Android's wording, carried by a `TypeError`, is what a backend that is
+    // down or a phone on a dead network actually produces. Showing it verbatim
+    // is the regression: this is the most common failure in the app, and
+    // "Network request failed" is not something to put in front of a user.
+    const failure = await transportFailureFrom(new TypeError("Network request failed"));
+    expect(failure.isOffline).toBe(true);
+    // The client passes the platform's wording through untouched, which is
+    // exactly why the friendly sentence has to come from `describeError`.
+    expect(failure.message).toBe("Network request failed");
+    service.joinScoreboard.mockRejectedValue(failure);
+    const store = makeStore();
+
+    const action = await store.dispatch(joinScoreboard("ab12cd"));
+
+    expect(action.payload).toBe("Can't reach the server");
+  });
+
+  it("shows the friendly wording for iOS's network failure too", async () => {
+    const failure = await transportFailureFrom(new TypeError("Load failed"));
+    service.joinScoreboard.mockRejectedValue(failure);
+
+    const action = await makeStore().dispatch(joinScoreboard("ab12cd"));
+
+    expect(action.payload).toBe("Can't reach the server");
+  });
+
+  it("keeps the client's own wording when a transport failure has no message", async () => {
+    // The one case the old fixed-string branch was actually written for, and
+    // the only one where `message` already reads the way the user should see it.
     service.joinScoreboard.mockRejectedValue(new ApiClientError("Can't reach the server", 0));
     const store = makeStore();
 

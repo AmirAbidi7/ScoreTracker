@@ -22,21 +22,29 @@ import {
  * different one per call site, because "no scoreboard with that code" is
  * nonsense as the answer to "delete this board" or "list the boards".
  *
- * Everything else, `status === 0` included, keeps the message the API client
- * built. That looks like it loses the offline wording, but `isOffline` is
- * `status === 0`, and `encodePathSegment` *also* builds a `status: 0` error for
- * a code it cannot put in a URL — under a comment saying the message, not the
- * status, is what tells the two apart. A fixed "Can't reach the server" for
- * every `status === 0` is precisely the UI that comment warns about: it blames
- * the network for a bug in the user's input, and throws away the only
- * diagnostic. A genuine transport failure already reads "Can't reach the
- * server", because that is what the client substitutes when the cause has no
- * message of its own.
+ * Then the two `status === 0` cases, which `isOffline` alone cannot separate
+ * because both are genuinely "never reached the server" and the status has to
+ * keep meaning that for every consumer. `ApiClientError.failure` is what tells
+ * them apart:
+ *
+ * - `"transport"` is a dead network or a downed backend, and the user gets
+ *   "Can't reach the server". The client's own message is not used here: it
+ *   substitutes that string only when the cause carries none, and a real React
+ *   Native `fetch` rejection always carries one — "Network request failed" on
+ *   Android, "Load failed" on iOS. Passing those through would put a raw
+ *   platform string in front of the user on the most common failure there is.
+ * - `"unencodable-value"` is a code this client refused to put in a URL, so
+ *   nothing was ever sent. Blaming the network is a false diagnosis here, and
+ *   the message is the only useful thing left to show.
+ *
+ * A tag rather than a comparison on the message text, so rewording a message
+ * cannot silently change which failures are called offline.
  */
 const describeError = (error: unknown, notFound = "No scoreboard with that code"): string => {
   if (error instanceof ApiClientError) {
     if (error.status === 404) return notFound;
-    return error.message;
+    if (error.failure === "unencodable-value") return error.message;
+    return error.isOffline ? "Can't reach the server" : error.message;
   }
   return error instanceof Error ? error.message : "Something went wrong";
 };
