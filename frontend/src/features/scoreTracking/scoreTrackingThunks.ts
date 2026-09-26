@@ -163,6 +163,15 @@ export const sendIntent = createAsyncThunk(
     dispatch(intentStarted());
     try {
       const ack = await scoreboardService.sendIntent(intent);
+      if (ack.ok === "superseded") {
+        // The server applied it — to a game this device has left, which is why the
+        // service did not hand the board over (see `ScoreboardService.sendIntent`).
+        // Nothing to apply and nothing to apologise for: the board on screen is
+        // untouched, and the score the user asked for went to the game they walked
+        // away from. Resolved rather than rejected so it is not reported as a
+        // failure of the game in front of them.
+        return ack.board;
+      }
       if (ack.ok) {
         dispatch(applyBoard(ack.scoreboard));
         return ack.scoreboard;

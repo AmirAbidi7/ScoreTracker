@@ -23,6 +23,20 @@ export type ServiceEvent =
   | { type: "disconnected" }
   | { type: "error"; message: string };
 
+/**
+ * What `sendIntent` reports.
+ *
+ * `superseded` is the service's own answer and never the server's: the server did
+ * apply the intent — to a board this device has since left. It is not a failure
+ * and not a success, and folding it into either would be a lie the user reads
+ * ("Not connected" / a red refusal for a game they walked away from). Named and
+ * separate so the caller can decline to show a board nobody is on without
+ * inventing a reason. See `sendIntent` for why the ack needs a gate at all.
+ */
+export type SendIntentResult =
+  | ScoreboardAck
+  | { readonly ok: "superseded"; readonly board: Scoreboard };
+
 export type ScoreboardServiceOptions = {
   apiClient?: ApiClient;
   createSocket?: () => SocketLike;
@@ -251,6 +265,11 @@ export class ScoreboardService {
    * applied once B is the tracked board. A `scoreboard:update` for the same
    * board keeps the id equal, which is intended — ordering out-of-arrival by
    * `updateTime` is the reducer's job, not this layer's.
+   *
+   * The two places that gate on it, and the same rule in both: `resync` before
+   * it commits a board, and `sendIntent` before it hands an ack over. Anything
+   * that arrives from the server on behalf of a board is `await` away from
+   * committing, and the board can be left or replaced in that window.
    */
   private stillTracking(socket: SocketLike, boardId: string): boolean {
     return this.socket === socket && this.current?.id === boardId;
@@ -364,13 +383,33 @@ export class ScoreboardService {
    * Resolves a failure ack rather than throwing or queueing: an intent sent
    * while disconnected is a decision the UI has to render, not an exception.
    * `code: 0` is the same "never reached the server" the REST client uses.
+   *
+   * An ack is gated on the same rule, and through the same helper, as a re-read.
+   * `teardown` detaches the listeners and disconnects the socket, but it cannot
+   * un-send an intent: the server may still answer one this device has already
+   * walked away from. That answer is a board, the caller applies it, and the
+   * store goes back to the game the user just left while `current` is the new one
+   * — after which the next tap posts the *old* board's `playerId` to the new
+   * board's `code`. Player ids restart at 1 per board, so the ids collide, the
+   * write succeeds, and the wrong number moves convincingly.
+   *
+   * So the ack is not returned as a board to apply. `stillTracking` answers it
+   * with the same two questions it asks about a re-read — is this still the
+   * socket, is this still the board — and a refusal is still reported: a
+   * `not found player` for a game the user has left is noise about a game they
+   * are not in, but it carries no board, so it cannot be applied by mistake and
+   * inventing a reason for it would be a worse lie than showing it.
    */
-  sendIntent(intent: ScoreboardIntent): Promise<ScoreboardAck> {
+  sendIntent(intent: ScoreboardIntent): Promise<SendIntentResult> {
     const socket = this.socket;
-    if (!this.current || !socket || !this.connected) {
+    const board = this.current;
+    if (!board || !socket || !this.connected) {
       return Promise.resolve({ ok: false, code: 0, message: "Not connected to the server" });
     }
-    return emitIntent(socket, this.current.code, intent);
+    const boardId = board.id;
+    return emitIntent(socket, board.code, intent).then((ack) =>
+      !ack.ok || this.stillTracking(socket, boardId) ? ack : { ok: "superseded", board: ack.scoreboard },
+    );
   }
 }
 
