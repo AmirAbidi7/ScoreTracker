@@ -50,20 +50,6 @@ export default function SyncGame() {
 
   const current = useAppSelector((state) => state.scoreboard.current);
 
-  /**
-   * Runs one request and reports how it ended, so both buttons behave the same
-   * way and neither has to invent its own idea of a failure.
-   *
-   * The thunks are dispatched rather than unwrapped so the *rejected action* is
-   * what comes back: `unwrap()` throws the payload or the serialised error, and
-   * those are the two `rejectionReason` has to tell apart to avoid answering a
-   * good message with RTK's "Rejected" placeholder. A resolved attempt is not a
-   * failure and its payload is a board rather than a message, so `match` — not
-   * the shape of what came back — is what says which of the two this was.
-   *
-   * Nothing here writes board state. The store is the server's to change, and a
-   * join that fails has to leave the user exactly where they were.
-   */
   const run = async (
     kind: "join" | "create",
     attempt: () => Promise<RejectionCarrier | null>,
@@ -76,10 +62,6 @@ export default function SyncGame() {
       const rejected = await attempt();
       if (rejected !== null) setFormError(rejectionReason(rejected) ?? fallback);
     } catch {
-      // Not reachable — `dispatch` settles a thunk as an action rather than
-      // rejecting — and kept because the alternative is worse: an unexpected
-      // throw would escape `void run(…)` as an unhandled rejection with the
-      // button still reading "Joining..." and nothing on screen to say why.
       setFormError(fallback);
     } finally {
       setPending(null);
@@ -87,12 +69,6 @@ export default function SyncGame() {
   };
 
   const onJoin = () => {
-    // Trimmed and uppercased here as well as in the thunk, deliberately. The
-    // check below is the form's own, and it has to be reading the code the
-    // server generates: `"  ab12cd  "` is a code with padding and `"  ab  "` is
-    // four characters, which is only true once the padding is gone. The thunk
-    // keeps its own copy of this because a thunk that only works from one screen
-    // is not safe.
     const trimmed = code.trim().toUpperCase();
     if (trimmed.length !== 6) {
       setFormError("A scoreboard code is 6 characters");
@@ -124,11 +100,6 @@ export default function SyncGame() {
     );
   };
 
-  /**
-   * Already in a game: the share code is the only thing anyone else needs, and
-   * a form asking for a code would be asking the user to rejoin what they are
-   * already in. The board moves out of this tab when they leave or delete it.
-   */
   if (current) {
     return (
       <View
@@ -153,15 +124,8 @@ export default function SyncGame() {
     <ScrollView
       className="bg-black flex-1"
       contentContainerClassName="gap-8 p-8 pb-24"
-      // Both buttons sit under the keyboard on a phone, and without this the
-      // first tap only puts the keyboard away.
       keyboardShouldPersistTaps="handled"
     >
-      {/*
-        Above the form, not below it: the keyboard covers the bottom half of the
-        screen, which is where both buttons are, so a message at the end of the
-        scroll is a message nobody reads.
-      */}
       {formError !== null && (
         <Text testID="form-error" className="text-red-500 font-sans-medium text-lg">
           {formError}
@@ -177,10 +141,6 @@ export default function SyncGame() {
           onChangeText={setCode}
           autoCapitalize="characters"
           autoCorrect={false}
-          // No `maxLength`. A paste of " ab12cd " is eight characters with
-          // padding around a perfectly good code, and a cap truncates the tail
-          // off it — turning the one input this screen exists to accept into the
-          // one it refuses. The length check in `onJoin` is what says so instead.
           placeholder="AB12CD"
         />
         <Button

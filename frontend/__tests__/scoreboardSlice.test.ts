@@ -16,10 +16,6 @@ import {
   sendIntent,
 } from "../src/features/scoreTracking/scoreTrackingThunks";
 
-/**
- * The gateway is mocked wholesale, as in the thunks' own tests: this file is
- * about the reducer, and the slice must be importable without a socket.
- */
 jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   scoreboardService: {
     joinScoreboard: jest.fn(),
@@ -82,21 +78,11 @@ describe("scoreboardSlice", () => {
     expect(afterLater.current).toEqual(later);
   });
 
-  /**
-   * A *different* board is a switch, not a late delivery, and its timestamp says
-   * nothing about the board it replaces. This is the leaderboard path: joining a
-   * game that was created before the one already on screen. Guarding on
-   * `updateTime` alone left the previous game on the screen while the gateway
-   * had already moved to the new one, and because player ids restart at 1 per
-   * board the ids collided — `sendIntent` then credited the old game's player to
-   * the new game's board and it *looked* like it worked.
-   */
   test("a different board replaces the current one however old its timestamp is", () => {
     const olderGame: Scoreboard = {
       id: "b2",
       gameName: "Catan",
       code: "ZZ99YY",
-      // The colliding id is the point: id 1 is a different person on this board.
       players: [{ id: 1, name: "Bo", score: 12 }],
       updateTime: "2026-09-01T00:00:00.000Z",
     };
@@ -105,7 +91,6 @@ describe("scoreboardSlice", () => {
     expect(reducer(withGame, applyBoard(olderGame)).current).toEqual(olderGame);
   });
 
-  /** And back again, because a switch that only works one way is still a trap. */
   test("switching back to the first board applies it too", () => {
     const secondGame: Scoreboard = {
       id: "b2",
@@ -118,20 +103,9 @@ describe("scoreboardSlice", () => {
     const away = reducer(reducer(initial, applyBoard(board)), applyBoard(secondGame));
     expect(away.current).toEqual(secondGame);
 
-    // Back to the first game, whose timestamp is now the older of the two.
     expect(reducer(away, applyBoard(board)).current).toEqual(board);
   });
 
-  /**
-   * The gateway re-reads the board over REST on every `connect`, and
-   * `enterBoard` has already emitted one, so the very first `board` event
-   * arrives twice. The second delivery is a *different object* with the same
-   * content — a second REST response, not the same reference — so this asserts
-   * on the identity of the returned state: a `>=` comparison, or no
-   * comparison at all, would assign the fresh payload, immer would see a
-   * change, and every connected component would re-render for a board that
-   * did not move.
-   */
   test("a redelivered board leaves the state untouched", () => {
     const afterFirst = reducer(initial, applyBoard(board));
     const redelivered: Scoreboard = { ...board, players: [{ ...board.players[0] }] };
@@ -140,11 +114,6 @@ describe("scoreboardSlice", () => {
     expect(afterSecond.current).toBe(afterFirst.current);
   });
 
-  /**
-   * The clamp is load-bearing: an intent that times out or is rejected can
-   * settle without a matching start, and a negative counter renders as a
-   * spinner that never goes away.
-   */
   test("the pending counter rises and falls without going negative", () => {
     const one = reducer(initial, intentStarted());
     const two = reducer(one, intentStarted());
@@ -153,11 +122,9 @@ describe("scoreboardSlice", () => {
 
     const settled = reducer(reducer(two, intentSettled()), intentSettled());
     expect(settled.pendingIntents).toBe(0);
-    // A third settle has no start left to match.
     expect(reducer(settled, intentSettled()).pendingIntents).toBe(0);
   });
 
-  /** The same clamp, reached from a store that never saw an intent start. */
   test("a settle with no matching start leaves the counter at zero", () => {
     const settled = reducer(initial, intentSettled());
     expect(settled.pendingIntents).toBe(0);
@@ -200,11 +167,6 @@ describe("scoreboardSlice", () => {
     expect(after.pendingIntents).toBe(0);
   });
 
-  /**
-   * `current` orders strictly by `updateTime`, so without a reset the store
-   * could never hold a board older than the one it already has. Clearing
-   * `current` is what makes leaving and joining another board possible.
-   */
   test("a board can be applied again after a reset", () => {
     const switched = reducer(reducer(initial, applyBoard(later)), resetScoreboard());
     expect(reducer(switched, applyBoard(board)).current).toEqual(board);
@@ -216,13 +178,6 @@ describe("scoreboardSlice", () => {
     expect(reducer(initial, setBoardsStatus("error")).boardsStatus).toBe("error");
   });
 
-  /**
-   * The two rejections are matched by their type strings, which the slice cannot
-   * import from the thunks without a cycle. Dispatching the *real* creators here
-   * is what keeps the strings honest: rename a thunk's prefix, or change what it
-   * rejects with, and this fails instead of the app going silent on a refused
-   * score change again.
-   */
   test("a rejection the thunks raise is reported", () => {
     const rejected = sendIntent.rejected(
       new Error("No such player"),
@@ -232,17 +187,9 @@ describe("scoreboardSlice", () => {
     const next = reducer(reducer(initial, applyBoard(board)), rejected);
     expect(rejected.type).toBe("scoreboard/intent/rejected");
     expect(next.error).toBe("No such player");
-    // Still the server's board: a refusal changes nothing about the score.
     expect(next.current).toEqual(board);
   });
 
-  /**
-   * A cold start with a session saved and no reachable backend: the restore thunk
-   * sets `connecting` and then rejects, and with no case for it the reason went
-   * nowhere — the screen said "No game yet" and a status that never resolved. The
-   * empty state renders `error` in place of its standing hint, so reporting it
-   * here is the whole fix.
-   */
   test("a session that could not be restored is reported, and the status left alone", () => {
     const rejected = restoreSession.rejected(new Error("Can't reach the server"), "request-8", undefined);
     const afterConnecting = reducer(initial, setStatus("connecting"));
@@ -251,9 +198,6 @@ describe("scoreboardSlice", () => {
 
     expect(rejected.type).toBe("scoreboard/restore/rejected");
     expect(next.error).toBe("Can't reach the server");
-    // Left as the thunk set it. Calling this a `reconnecting` would be a guess
-    // about a socket that was never opened, and the banner renders "Reconnecting"
-    // for anything but `offline`.
     expect(next.status).toBe("connecting");
   });
 
@@ -268,11 +212,6 @@ describe("scoreboardSlice", () => {
     expect(next.current).toEqual(board);
   });
 
-  /**
-   * The shape `rejectWithValue` produces, which is what every thunk in this app
-   * actually does — so it is the one that has to be read, and it is not the
-   * shape the `rejected` creator above builds.
-   */
   test("a reason carried in the payload is reported", () => {
     const rejected = {
       type: "scoreboard/intent/rejected",
@@ -290,12 +229,6 @@ describe("scoreboardSlice", () => {
     expect(reducer(initial, rejected).error).toBe("No such player");
   });
 
-  /**
-   * The real shape for a thunk that rejects with a falsy value: `payload` is the
-   * empty string, and RTK has put its own placeholder on `error.message` because
-   * there was no message to serialise. Storing either would show the user the
-   * word "Rejected", or a blank red banner — both worse than showing nothing.
-   */
   test("a rejection with nothing to say is not answered with a placeholder", () => {
     const rejected = {
       type: "scoreboard/intent/rejected",
@@ -312,12 +245,6 @@ describe("scoreboardSlice", () => {
     expect(reducer(withError, silent).error).toBe("boom");
   });
 
-  /**
-   * The other half of a reported failure: it has to stop being reported once it
-   * stops being true. Nothing else clears `error` between two intents — the
-   * gateway reports a status only on connect, reconnect and disconnect — so
-   * without this a stale refusal sits on the board while a later `+` works.
-   */
   test("a later intent that goes through clears the refusal", () => {
     const refused = sendIntent.rejected(
       new Error("No such player"),
@@ -335,18 +262,11 @@ describe("scoreboardSlice", () => {
     const afterSuccess = reducer(afterRefusal, accepted);
 
     expect(afterSuccess.error).toBeNull();
-    // The board does not travel on the fulfilled action: `sendIntent` dispatches
-    // `applyBoard` with the server's board before it resolves, and `applyBoard`'s
-    // ordering guard is what decides whether that board is newer. The case here
-    // only forgets the failure.
     expect(afterSuccess.current).toEqual(board);
     expect(reducer(afterSuccess, applyBoard(later)).current).toEqual(later);
   });
 
   test("a successful delete needs no case of its own to clear the error", () => {
-    // `deleteCurrentScoreboard` resets the board away on the way out, and the
-    // reset nulls `error`. Asserted here so a future `delete/fulfilled` case is
-    // recognised as redundant rather than added.
     const refused = deleteCurrentScoreboard.rejected(
       new Error("Bad gateway"),
       "request-7",

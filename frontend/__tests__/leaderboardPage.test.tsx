@@ -13,13 +13,6 @@ import {
 } from "../src/features/scoreTracking/domain/ScoreboardService";
 import reducer, { applyBoard } from "../src/features/scoreTracking/scoreTrackingSlice";
 
-/**
- * Only the gateway is faked, and it is the same gateway the other five suites
- * fake: the real thunk, the real slice and the real component are all in the
- * loop. So every assertion below is a claim about what this page does — about
- * the message a user would read, about where they would be sent — rather than a
- * recording of which functions the component happened to call.
- */
 jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   scoreboardService: {
     joinScoreboard: jest.fn(),
@@ -32,16 +25,6 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   },
 }));
 
-/**
- * `useFocusEffect` runs its callback on a real `useEffect`, and the callbacks
- * are kept so a test can fire the *re-focus* the real hook would fire. The
- * refetch is therefore proven to be bound to the focus primitive rather than to
- * a bare mount effect: a mount effect has no second run to trigger.
- *
- * It lives inside the factory because `jest.mock` is hoisted above the imports,
- * so a `const` in the test body would still be in its temporal dead zone when
- * this module is first required.
- */
 jest.mock("expo-router", () => {
   const { useEffect: useReactEffect } = require("react");
   const focusEffects: Array<() => void> = [];
@@ -61,7 +44,6 @@ const { focusEffects } = jest.requireMock("expo-router") as {
   focusEffects: Array<() => void>;
 };
 
-/** What the real hook does when the tab comes back into view. */
 const refocus = async (): Promise<void> => {
   const effect = focusEffects[focusEffects.length - 1];
   if (!effect) throw new Error("the page never registered a focus effect");
@@ -73,7 +55,6 @@ const refocus = async (): Promise<void> => {
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
 const replace = router.replace as jest.MockedFunction<typeof router.replace>;
 
-/** One player, so "1 player" and not "1 players" is a claim the tests can make. */
 const catan: Scoreboard = {
   id: "board-1",
   gameName: "Catan",
@@ -96,11 +77,6 @@ const chess: Scoreboard = {
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });
 type TestStore = ReturnType<typeof makeStore>;
 
-/**
- * Seeded through the slice's own action before the page mounts, so the page sees
- * a store a real one could have produced — no hand-built state that no reducer
- * could ever have left behind.
- */
 const renderPage = async (seed: (store: TestStore) => void = () => {}): Promise<TestStore> => {
   const store = makeStore();
   seed(store);
@@ -112,29 +88,16 @@ const renderPage = async (seed: (store: TestStore) => void = () => {}): Promise<
   return store;
 };
 
-/**
- * The Scoreboard tab, derived rather than written out.
- *
- * The page navigates to a string, and the generated route types catch a wrong
- * segment — but only against the `.expo/types/router.d.ts` as it was last
- * generated, so a tab renamed in `constants/data.ts` typechecks fine until
- * someone runs the CLI again. `constants/data.ts` is where the app decides what
- * the Scoreboard tab is called, and that tab lives under the `(main)` layout, so
- * deriving the route from it asserts a relationship between the two files: a
- * rename fails here rather than sending the user nowhere.
- */
 const scoreboardRoute = (): string => {
   const tab = tabs.find((candidate) => candidate.title === "Scoreboard");
   if (!tab) throw new Error("constants/data.ts has no Scoreboard tab");
   return `/(main)/${tab.name}`;
 };
 
-/** The list has rendered once its first row has, and the rows are one map. */
 const waitForRows = async (): Promise<void> => {
   await screen.findByTestId(`board-${catan.id}`);
 };
 
-/** A promise held open, to keep the page in its loading or in-flight state. */
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -145,7 +108,6 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-/** A third game, for the questions about a list that is already on screen. */
 const uno: Scoreboard = {
   id: "board-3",
   gameName: "Uno",
@@ -170,8 +132,6 @@ describe("loading the list", () => {
 
     expect(service.listScoreboards).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("boards-loading")).toBeOnTheScreen();
-    // A list that renders itself empty before it has been told anything is the
-    // same picture as a server that has no games.
     expect(screen.queryByTestId("boards-empty")).toBeNull();
     expect(screen.queryByTestId(`board-${catan.id}`)).toBeNull();
 
@@ -192,10 +152,6 @@ describe("a load that failed", () => {
     await waitFor(() => expect(screen.getByTestId("boards-error")).toBeOnTheScreen());
     expect(screen.getByTestId("boards-error")).toHaveTextContent("Bad gateway");
 
-    // The list's own failure is nowhere in the store's `error` field — that one
-    // belongs to the board that is open, and only a refused intent or a gateway
-    // event writes it. So a page that read the reason from there would have had
-    // nothing to show, which is what this asserts.
     expect(store.getState().scoreboard.error).toBeNull();
   });
 
@@ -205,8 +161,6 @@ describe("a load that failed", () => {
     await renderPage();
 
     await waitFor(() => expect(screen.getByTestId("boards-error")).toBeOnTheScreen());
-    // "The load failed" and "there are no games" are different facts, and a
-    // user who cannot tell them apart will conclude they have no games.
     expect(screen.queryByTestId("boards-empty")).toBeNull();
     expect(screen.queryByText("No games yet. Create one from the Join tab.")).toBeNull();
   });
@@ -226,11 +180,6 @@ describe("a load that failed", () => {
 });
 
 describe("keeping the list current", () => {
-  /**
-   * The case a mount-only read gets wrong: the tab was already loaded, so a game
-   * started since then is on the server and missing here. A list that under-
-   * reports is the tab's whole failure mode, so the read has to follow focus.
-   */
   it("re-reads the list when the tab comes back into focus", async () => {
     await renderPage();
     await waitForRows();
@@ -244,12 +193,6 @@ describe("keeping the list current", () => {
     expect(await screen.findByTestId(`board-${uno.id}`)).toBeOnTheScreen();
   });
 
-  /**
-   * A focus effect is not an affordance: someone staring at a list that is
-   * missing the game they just started is not going to leave the tab and come
-   * back. The control has to be there while the list is on screen, and it does
-   * not need a navigator or a mock to be pressed.
-   */
   it("can be refreshed by hand while the list is already on screen", async () => {
     await renderPage();
     await waitForRows();
@@ -280,8 +223,6 @@ describe("keeping the list current", () => {
 
     await refocus();
 
-    // A message about a list that has since been replaced, with nothing able to
-    // dismiss it — the same defect the slice refuses to leave in `error`.
     expect(screen.queryByTestId("join-error")).toBeNull();
   });
 });
@@ -295,7 +236,6 @@ describe("the list itself", () => {
     expect(await screen.findByTestId("boards-empty")).toHaveTextContent(
       "No games yet. Create one from the Join tab.",
     );
-    // A list that failed to load says so; one that loaded has nothing to say.
     expect(screen.queryByTestId("boards-error")).toBeNull();
     expect(screen.queryByTestId(`board-${catan.id}`)).toBeNull();
   });
@@ -320,14 +260,9 @@ describe("the list itself", () => {
     expect(screen.getByTestId(`board-open-${catan.id}`)).toBeOnTheScreen();
     expect(screen.queryByTestId(`board-open-${chess.id}`)).toBeNull();
 
-    // NativeWind resolves class names to styles no query can see, so the border
-    // the open board is given is only observable here.
     expect(screen.getByTestId(`board-${catan.id}`).props.className).toContain("border-primary");
     expect(screen.getByTestId(`board-${chess.id}`).props.className).toContain("border-secondary");
 
-    // And the mark has to survive a screen reader: the row's own label replaces
-    // what its children would read out, "Open" included, so `selected` is the
-    // only thing carrying it.
     expect(screen.getByTestId(`board-${catan.id}`)).toBeSelected();
     expect(screen.getByTestId(`board-${chess.id}`)).not.toBeSelected();
   });
@@ -364,10 +299,6 @@ describe("joining a game from a row", () => {
     expect(store.getState().scoreboard.current).toEqual(chess);
   });
 
-  /**
-   * The navigation is the last thing to happen, so a refused join cannot leave
-   * the user on a scoreboard they are not in — with no banner there to say so.
-   */
   it("stays on this tab and says why when the server refuses the join", async () => {
     service.joinScoreboard.mockRejectedValue(new ApiClientError("Nope", 404));
     const store = await renderPage();
@@ -379,9 +310,7 @@ describe("joining a game from a row", () => {
       expect(screen.getByTestId("join-error")).toHaveTextContent("No scoreboard with that code"),
     );
     expect(replace).not.toHaveBeenCalled();
-    // Nothing to have joined: the store is still saying what the server said.
     expect(store.getState().scoreboard.current).toBeNull();
-    // The list is still here to try something else from.
     expect(screen.getByTestId(`board-${chess.id}`)).toBeOnTheScreen();
   });
 
@@ -418,7 +347,6 @@ describe("joining a game from a row", () => {
     });
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(scoreboardRoute()));
-    // The rows come back, so a board left and rejoined is not a dead end.
     expect(screen.getByTestId(`board-${chess.id}`)).toBeEnabled();
   });
 });

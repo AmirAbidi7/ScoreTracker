@@ -11,19 +11,6 @@ import {
 import reducer, { applyBoard } from "../src/features/scoreTracking/scoreTrackingSlice";
 import JoinPage from "../src/features/syncGame/syncGame";
 
-/**
- * Only the gateway is faked, and it is the same gateway the scoreboard page's
- * tests fake: the real thunk, the real slice and the real component are all in
- * the loop. So every assertion below is a claim about what this form does —
- * about the code the server would receive, about the message a user would read
- * — rather than a recording of which functions the component happened to call.
- *
- * Mocking the thunks instead would be the cheaper arrangement, and it cannot
- * test the one thing this form exists to get right: an action creator that is
- * not a thunk hands `dispatch` a plain object, which carries no `meta` saying
- * whether it was rejected and nothing to unwrap — so "show the user why the
- * join failed" becomes untestable while still looking covered.
- */
 jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
   scoreboardService: {
     joinScoreboard: jest.fn(),
@@ -38,7 +25,6 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
 
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
 
-/** The board the server sends back: the form has no say in any of it. */
 const board: Scoreboard = {
   id: "board-1",
   gameName: "Catan",
@@ -50,11 +36,6 @@ const board: Scoreboard = {
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });
 type TestStore = ReturnType<typeof makeStore>;
 
-/**
- * Seeded through the slice's own action before the page mounts, so the page
- * sees a store a real one could have produced — no hand-built state that no
- * reducer could ever have left behind.
- */
 const renderPage = async (seed: (store: TestStore) => void = () => {}): Promise<TestStore> => {
   const store = makeStore();
   seed(store);
@@ -66,12 +47,6 @@ const renderPage = async (seed: (store: TestStore) => void = () => {}): Promise<
   return store;
 };
 
-/**
- * The error a real dead network produces, run through the real client: React
- * Native's `fetch` rejection carries the platform's own wording, and the client
- * only substitutes "Can't reach the server" when the cause carries none — so
- * the message this test asserts is one the app actually reaches on its own.
- */
 const transportFailureFrom = async (cause: unknown): Promise<ApiClientError> => {
   const client = new ApiClient({
     baseUrl: "https://api.test",
@@ -86,12 +61,6 @@ const transportFailureFrom = async (cause: unknown): Promise<ApiClientError> => 
   throw new Error("expected the request to fail, but it resolved");
 };
 
-/**
- * The error for a code the client refuses to put in a URL, produced by the real
- * client so the discriminator is not hand-picked here: writing
- * `new ApiClientError(msg, 0, "unencodable-value")` by hand would make the
- * test an assertion about the literal it had just typed.
- */
 const unencodableFailureFor = (code: string): ApiClientError => {
   const fetchImpl = jest.fn(() => Promise.reject(new Error("must never be sent")));
   const client = new ApiClient({
@@ -107,15 +76,8 @@ const unencodableFailureFor = (code: string): ApiClientError => {
   throw new Error("expected the client to refuse the code, but it built a request");
 };
 
-/**
- * Six UTF-16 code units, one of which is an unpaired surrogate. It is a
- * six-character string as far as `length` is concerned — which is the whole
- * reason it can reach the client at all, and the reason the form's own check
- * must not turn it away first.
- */
 const LONE_SURROGATE_CODE = "\uD800abcde";
 
-/** A promise held open, to keep the form in its in-flight state. */
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -143,15 +105,6 @@ beforeEach(() => {
 });
 
 describe("joining with a code", () => {
-  /**
-   * The paste is padded, lowercase and six characters long.
-   *
-   * Only the form can make this dispatch at all: untrimmed it is ten characters,
-   * and the length check the form runs before dispatching is what refuses it.
-   * That is also the honest limit of this test — the upper-casing is duplicated
-   * in the thunk on purpose, so `"AB12CD"` at the service is the composition of
-   * the two and nothing here can say which of them did it.
-   */
   it("trims and uppercases a pasted code before it is sent", async () => {
     await renderPage();
 
@@ -161,11 +114,6 @@ describe("joining with a code", () => {
     expect(service.joinScoreboard).toHaveBeenCalledWith("AB12CD");
   });
 
-  /**
-   * None of these is a code the server generates, and each is turned away with
-   * the reason spelled out and nothing sent. `"  ab  "` is the one that looks
-   * like a code and is not: six characters of padding around four that matter.
-   */
   it.each([["", "empty"], ["abc", "too short"], ["  ab  ", "padded short"], ["ab12cde", "too long"]])(
     "refuses a code that is %p (%s) without sending anything",
     async (code) => {
@@ -187,10 +135,8 @@ describe("joining with a code", () => {
 
     await screen.findByTestId("current-board");
     expect(screen.getByText("Catan")).toBeOnTheScreen();
-    // The server's code, which is the one anybody else has to type.
     expect(screen.getByTestId("current-code")).toHaveTextContent("AB12CD");
     expect(store.getState().scoreboard.current).toEqual(board);
-    // The form has done its job and is no longer on offer.
     expect(screen.queryByTestId("code-input")).toBeNull();
   });
 
@@ -203,8 +149,6 @@ describe("joining with a code", () => {
     await waitFor(() =>
       expect(screen.getByTestId("form-error")).toHaveTextContent("No scoreboard with that code"),
     );
-    // A refused join leaves nothing behind: no board, and a form to try again
-    // with, rather than a board the server never agreed to.
     expect(store.getState().scoreboard.current).toBeNull();
     expect(screen.getByTestId("code-input")).toBeOnTheScreen();
   });
@@ -222,13 +166,6 @@ describe("joining with a code", () => {
     );
   });
 
-  /**
-   * The case the length check could get wrong. A lone surrogate is one code
-   * unit, so this string really is six characters long and really does belong
-   * in a request — it is the client's URL encoding that refuses it, and the
-   * client has an answer for that which is not "the network is down". Turning
-   * it away in the form would replace a true diagnosis with a wrong one.
-   */
   it("lets a code the client cannot encode reach the client, and reports what it said", async () => {
     service.joinScoreboard.mockRejectedValue(unencodableFailureFor(LONE_SURROGATE_CODE));
     await renderPage();
@@ -241,8 +178,6 @@ describe("joining with a code", () => {
         /Cannot build a request URL/,
       ),
     );
-    // The one thing this screen must not say: nothing was sent, so nothing was
-    // unreachable.
     expect(screen.queryByText("Can't reach the server")).toBeNull();
   });
 
@@ -257,8 +192,6 @@ describe("joining with a code", () => {
 
     await pressJoinWith("ab");
 
-    // A message the user has already acted on, left on screen under the answer
-    // to what they did next, is a line they cannot get rid of.
     expect(screen.getByTestId("form-error")).toHaveTextContent(
       "A scoreboard code is 6 characters",
     );
@@ -314,8 +247,6 @@ describe("while a request is in flight", () => {
 
     expect(screen.getByTestId("join-button")).toHaveTextContent("Joining...");
     expect(screen.getByTestId("join-button")).toBeDisabled();
-    // One request at a time, whichever button is pressed: a second join would
-    // be the same round trip twice, and a create would be two boards at once.
     expect(screen.getByTestId("create-button")).toBeDisabled();
 
     await fireEvent.press(screen.getByTestId("join-button"));
@@ -328,8 +259,6 @@ describe("while a request is in flight", () => {
       request.reject(new ApiClientError("Bad gateway", 502));
     });
 
-    // A button stuck on "Joining..." after the answer came back is a form the
-    // user cannot use again, and the only reason they are still here.
     await waitFor(() =>
       expect(screen.getByTestId("form-error")).toHaveTextContent("Bad gateway"),
     );
@@ -381,7 +310,6 @@ describe("with a game already open", () => {
     expect(screen.getByTestId("current-board")).toBeOnTheScreen();
     expect(screen.getByText("Catan")).toBeOnTheScreen();
     expect(screen.getByTestId("current-code")).toHaveTextContent("AB12CD");
-    // There is no reason to rejoin the board the user is already in.
     expect(screen.queryByTestId("code-input")).toBeNull();
     expect(screen.queryByTestId("join-button")).toBeNull();
     expect(screen.queryByTestId("create-button")).toBeNull();
@@ -390,8 +318,6 @@ describe("with a game already open", () => {
   it("marks the share code as the one thing to read out", async () => {
     await renderPage((store) => store.dispatch(applyBoard(board)));
 
-    // NativeWind resolves class names to styles no query can see, so the
-    // `text-primary` the design calls for is only observable here.
     expect(screen.getByTestId("current-code").props.className).toContain("text-primary");
   });
 });

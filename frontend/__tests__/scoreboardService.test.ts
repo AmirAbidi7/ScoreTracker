@@ -7,12 +7,6 @@ import {
 } from "../src/features/scoreTracking/domain/ScoreboardService";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 
-/**
- * `(...args: any[]) => void` and not `never[]`: this is the handler shape
- * `SocketLike` declares, and a fake typed against anything else cannot invoke a
- * captured handler with a real payload. See the comment on `SocketLike` in
- * `scoreboardSocket.ts` for why the `any` is load-bearing.
- */
 type Handlers = Record<string, (...args: any[]) => void>;
 
 type FakeSocket = SocketLike & {
@@ -45,18 +39,12 @@ const makeFakeSocket = (): FakeSocket => {
   const socket: FakeSocket = {
     connected: true,
     connect: jest.fn(),
-    // The real client emits `disconnect` when it is disconnected locally, and
-    // the service calls `disconnect()` on every teardown. A fake that swallowed
-    // that would hide exactly the bug the leave test is looking for.
     disconnect: jest.fn(() => {
       handlers["disconnect"]?.("io client disconnect");
     }),
     on: jest.fn((event: string, handler: (...args: any[]) => void) => {
       handlers[event] = handler;
     }),
-    // Removal is real, not a `jest.fn()` that records the call and forgets: "the
-    // service detached this listener" is what the leave test turns on, and a
-    // fake that kept the handler would let it pass vacuously.
     off: jest.fn((event: string, handler?: (...args: any[]) => void) => {
       if (handler && handlers[event] === handler) delete handlers[event];
     }),
@@ -78,11 +66,6 @@ const makeApi = (overrides: Partial<Record<string, jest.Mock>> = {}) =>
     deleteScoreboard: overrides.deleteScoreboard ?? jest.fn().mockResolvedValue(undefined),
   }) as unknown as ApiClient;
 
-/**
- * Hands out one fake per socket the service asks for, so a test can tell the
- * teardown of a socket from the creation of its replacement. Asking for more
- * than it supplied is a test bug and says so instead of silently reusing one.
- */
 const buildSockets = (
   sockets: FakeSocket[],
   api = makeApi(),
@@ -108,7 +91,6 @@ const buildSockets = (
 const build = (socket: FakeSocket, api = makeApi(), reconnectDelays: number[] = [1, 2]) =>
   buildSockets([socket], api, reconnectDelays);
 
-/** The statuses an observer saw, in order. */
 const statusesOf = (events: ServiceEvent[]): string[] =>
   events.flatMap((event) => (event.type === "status" ? [event.status] : []));
 
@@ -123,18 +105,11 @@ const fireDisconnect = (socket: FakeSocket): void => {
   (socket.handlers["disconnect"] as (reason: string) => void)("transport close");
 };
 
-/**
- * Crosses a task boundary so the `connect` handler's pending
- * `getScoreboard(...).then(...)` runs. Asserting straight after firing the
- * handler sees one room join, not two: the re-join happens after the re-read
- * resolves, not during the handler.
- */
 const flushAsync = (): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
 
-/** A promise the test resolves by hand, so work can be held open across an await. */
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => {
@@ -166,8 +141,6 @@ describe("ScoreboardService", () => {
 
     const result = await service.createScoreboard("Catan");
 
-    // The first-run path into `enterBoard`, so the board it just made is the one
-    // that gets tracked and joined — not just returned to the caller.
     expect(createScoreboard).toHaveBeenCalledWith("Catan");
     expect(result).toEqual(board);
     expect(service.currentCode).toBe("AB12CD");
@@ -182,8 +155,6 @@ describe("ScoreboardService", () => {
 
     await expect(service.listScoreboards()).resolves.toEqual([board, otherBoard]);
 
-    // Browsing is not entering: no board is tracked and no socket is opened, or
-    // a screen that lists boards would take over the live connection.
     expect(listScoreboards).toHaveBeenCalledWith();
     expect(service.currentCode).toBeNull();
     expect(service.connectionStatus).toBe("idle");
@@ -230,8 +201,6 @@ describe("ScoreboardService", () => {
     const socket = makeFakeSocket();
     const { service } = build(socket);
     await service.joinScoreboard("AB12CD");
-    // A board is tracked and the socket still exists, so the only thing that can
-    // make this the offline case is the connection itself being down.
     fireDisconnect(socket);
 
     const result = await service.sendIntent({ type: "addPlayer", name: "Amir" });
@@ -262,9 +231,7 @@ describe("ScoreboardService", () => {
 
     expect(getScoreboard).toHaveBeenCalledWith("board-1");
     expect(joinsOn(socket)).toBe(2);
-    // The board read back from the server, not the one held before the drop.
     expect(events).toContainEqual({ type: "board", board: { ...board, players: [] } });
-    // It passes through `reconnecting` rather than snapping back to `connected`.
     expect(statusesOf(events)).toEqual(["connected", "reconnecting", "connected"]);
   });
 
@@ -278,19 +245,13 @@ describe("ScoreboardService", () => {
     fireConnect(socket);
     await flushAsync();
 
-    // A failed re-read is reported, not swallowed.
     expect(events).toContainEqual({ type: "error", message: "Can't reach the server" });
-    // Room membership is the part that does not recover on its own, so the
-    // re-join goes out anyway and the last known board stays tracked.
     expect(joinsOn(socket)).toBe(2);
     expect(service.currentCode).toBe("AB12CD");
   });
 
   test("a re-read that throws synchronously is reported and the room is still re-joined", async () => {
     const socket = makeFakeSocket();
-    // `ApiClient` methods are not `async`, and `encodePathSegment` throws for an
-    // unpaired surrogate, so the read can fail *before* it returns a promise.
-    // `makeApi`'s other doubles are all async, so nothing else covers this.
     const getScoreboard = jest.fn(() => {
       throw new Error('Cannot build a request URL from "\\ud800"');
     });
@@ -301,13 +262,10 @@ describe("ScoreboardService", () => {
     fireConnect(socket);
     await flushAsync();
 
-    // A synchronous throw is a failure to report, not a rejection to drop on the
-    // floor: `void this.resync(...)` would discard it entirely.
     expect(events).toContainEqual({
       type: "error",
       message: 'Cannot build a request URL from "\\ud800"',
     });
-    // Same as any other failed re-read: the room is re-joined anyway.
     expect(joinsOn(socket)).toBe(2);
     expect(service.currentCode).toBe("AB12CD");
   });
@@ -320,17 +278,15 @@ describe("ScoreboardService", () => {
     await service.joinScoreboard("AB12CD");
 
     fireDisconnect(socket);
-    fireConnect(socket); // the re-read is now in flight
+    fireConnect(socket);
     await service.leaveScoreboard();
 
-    // The answer arrives after the teardown, describing a board nobody is on.
     const stale: Scoreboard = { ...board, players: [{ id: 1, name: "Amir", score: 7 }] };
     reRead.resolve(stale);
     await flushAsync();
 
     expect(service.currentCode).toBeNull();
     expect(events).not.toContainEqual({ type: "board", board: stale });
-    // And the discarded socket is not dragged back into a room.
     expect(joinsOn(socket)).toBe(1);
   });
 
@@ -347,8 +303,8 @@ describe("ScoreboardService", () => {
     await service.joinScoreboard("AB12CD");
 
     fireDisconnect(first);
-    fireConnect(first); // A's re-read is in flight
-    await service.joinScoreboard("ZZ99YY"); // B becomes the tracked board, on a new socket
+    fireConnect(first);
+    await service.joinScoreboard("ZZ99YY");
 
     const stale: Scoreboard = { ...board, players: [{ id: 1, name: "Amir", score: 7 }] };
     reRead.resolve(stale);
@@ -359,7 +315,6 @@ describe("ScoreboardService", () => {
     expect(joinsOn(second)).toBe(1);
     expect(events).not.toContainEqual({ type: "board", board: stale });
 
-    // The point of the whole thing: an intent now goes to B, where the socket is.
     const pending = service.sendIntent({ type: "addScore", playerId: 7, amount: 1 });
     const intent = second.emitted.find((e) => e.event === "scoreboard:intent");
     expect(intent!.args[0]).toEqual({
@@ -388,11 +343,6 @@ describe("ScoreboardService", () => {
 
     await service.leaveScoreboard();
 
-    // A deliberate disconnect fires the socket's own `disconnect` event, and the
-    // real client emits it just like the fake above. With the handler still
-    // attached, leaving would schedule a reconnect for a socket the app has
-    // thrown away: a stray timer that outlives the screen, and a `reconnecting`
-    // status on the way to `idle`.
     expect(statusesOf(events)).toEqual(["connected", "idle"]);
     expect(Object.keys(socket.handlers)).toEqual([]);
     expect(service.connectionStatus).toBe("idle");
@@ -415,12 +365,8 @@ describe("ScoreboardService", () => {
     fireUpdate(socket, at(4));
     stop();
     fireUpdate(socket, at(8));
-    // The *same* function, not a second one: an array-backed registry would
-    // deliver twice from here on, and every later update would be doubled.
     service.subscribe(listener);
     fireUpdate(socket, at(12));
-    // And a re-render that re-subscribes before its cleanup runs must not stack
-    // a second copy either — that is the duplicate the `Set` is there to stop.
     service.subscribe(listener);
     fireUpdate(socket, at(16));
 
@@ -432,12 +378,6 @@ describe("ScoreboardService", () => {
   });
 });
 
-/**
- * The backoff schedule is injected so these tests do not wait in real time, so
- * they use fake timers to drive the ticks deterministically. Real timers are
- * restored afterwards, and nothing here may await `flushAsync` — that is a
- * `setTimeout`, which would never fire.
- */
 describe("ScoreboardService backoff", () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -458,7 +398,6 @@ describe("ScoreboardService backoff", () => {
     jest.advanceTimersByTime(1);
     expect(socket.connect).toHaveBeenCalledTimes(1);
 
-    // Second failure waits the next delay in the schedule, not the first again.
     fireDisconnect(socket);
     jest.advanceTimersByTime(1999);
     expect(socket.connect).toHaveBeenCalledTimes(1);
@@ -471,12 +410,10 @@ describe("ScoreboardService backoff", () => {
     const { service } = build(socket, makeApi(), [1000]);
     await service.joinScoreboard("AB12CD");
 
-    // socket.io reconnects on its own, and does not have to wait for our timer.
     fireDisconnect(socket);
     fireConnect(socket);
     jest.advanceTimersByTime(1000);
 
-    // Otherwise the timer fires against a live socket and calls connect() on it.
     expect(socket.connect).not.toHaveBeenCalled();
   });
 
@@ -486,10 +423,8 @@ describe("ScoreboardService backoff", () => {
     const { service } = buildSockets([first, second], makeApi(), [1000]);
     await service.joinScoreboard("AB12CD");
 
-    fireDisconnect(first); // arms a 1s retry
+    fireDisconnect(first);
     await service.leaveScoreboard();
-    // Entering another board puts a live socket and a tracked board back in
-    // place, which is exactly what a leaked timer would find and poke.
     await service.joinScoreboard("ZZ99YY");
 
     jest.advanceTimersByTime(1000);

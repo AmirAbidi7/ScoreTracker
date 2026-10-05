@@ -6,22 +6,11 @@ import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
 import { generateCode } from "../utils/generateCode";
 
-/**
- * Row shape produced by {@link boardColumns}. Derived from the schema via
- * `$inferSelect` — `typeof scoreboardsTable` types its properties as column
- * objects, not row data — and narrowed to the projected columns so every
- * partial select/returning result is assignable to it.
- */
 type ScoreboardRow = Pick<
   typeof scoreboardsTable.$inferSelect,
   "id" | "gameName" | "code" | "players" | "updateTime"
 >;
 
-/**
- * Single mapping point from a database row to the wire DTO. The `updateTime`
- * column is nullable in the schema but always populated by `defaultNow()`;
- * the `?? new Date(0)` keeps a stray null from producing an unorderable value.
- */
 export const toScoreboardDTO = (row: ScoreboardRow): ScoreboardDTO => ({
   id: row.id,
   gameName: row.gameName,
@@ -30,7 +19,6 @@ export const toScoreboardDTO = (row: ScoreboardRow): ScoreboardDTO => ({
   updateTime: (row.updateTime ?? new Date(0)).toISOString(),
 });
 
-/** The exact projection used by every read that returns a board. */
 const boardColumns = {
   id: scoreboardsTable.id,
   gameName: scoreboardsTable.gameName,
@@ -39,13 +27,6 @@ const boardColumns = {
   updateTime: scoreboardsTable.updateTime,
 };
 
-/**
- * Reads and the one deletion. There is deliberately no "write this board" method:
- * a client's word about a score is an intent, and `applyIntent` in
- * `scoreboardIntentService.ts` is the only thing that turns one into a board.
- * A wholesale write would let any caller — and any future HTTP route — author
- * scores, which is the invariant the whole design turns on.
- */
 export type ScoreboardServiceInterface = {
   readonly createScoreboard: (
     scoreboardRequest: ScoreboardCreateRequest,
@@ -148,14 +129,6 @@ const deleteScoreboard = (db: Db) => (id: string) =>
     return value.code;
   });
 
-/**
- * The read half of `applyIntentToCode`, exported for it.
- *
- * Both halves have to run against the *same* `db`. That service used to reach
- * this read through an injected `ScoreboardService`, which carries its own pool,
- * so the read and the write that depended on it were two unrelated connections:
- * no transaction could ever have made them atomic together.
- */
 export const getScoreboardByCode = (db: Db) => (code: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
@@ -177,7 +150,6 @@ export const getScoreboardByCode = (db: Db) => (code: string) =>
     return toScoreboardDTO(scoreboard);
   });
 
-// The join route's name for the same lookup by code.
 const joinScoreboard = getScoreboardByCode;
 
 export const ScoreboardServiceLive = Layer.effect(

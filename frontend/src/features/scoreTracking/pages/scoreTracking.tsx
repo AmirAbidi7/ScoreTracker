@@ -12,12 +12,6 @@ import {
   sendIntent,
 } from "../scoreTrackingThunks";
 
-/**
- * The Join tab, which is where a user with no board has something to do next.
- * Written out rather than shared with `useScoreboardSync`: this page navigates
- * after a leave it asked for, and the hook navigates after a delete that
- * happened elsewhere, and neither is worth a module for one string.
- */
 const JOIN_ROUTE = "/(main)/(scoreTracking)/syncGame";
 
 const AddPlayerModal = ({
@@ -75,38 +69,16 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
   const [amount, setAmount] = useState("1");
   const dispatch = useAppDispatch();
 
-  // `Number` is forgiving in a way that is not useful here: `Number("")` and
-  // `Number("  ")` are both 0, and `Number("abc")` is `NaN`. All three collapse
-  // to a delta of 0, which the server would accept as a real `addScore` intent
-  // and apply as a no-op write — a pointless request and broadcast, and a
-  // "Saving 1 change…" flash for something the user did not change. So the
-  // buttons are disabled outright unless the box holds a usable non-zero number:
-  // `keyboardType="numeric"` is a hint to the keyboard, not validation, so a
-  // pasted "abc" or a grouped "1,000" lands here too. A dimmed, disabled button
-  // says so, where a button that silently swallows the press is
-  // indistinguishable from a dropped tap.
   const parsed = Number(amount);
   const delta = Number.isFinite(parsed) ? parsed : 0;
   const adjustable = delta !== 0;
 
-  /**
-   * The server decides the score, so this only ever states the change that was
-   * asked for. `void` on the dispatch because a handler that returns a promise
-   * leaks it to whoever invoked it, and a press should not be a thing anyone
-   * can be made to wait on.
-   */
   const adjust = (direction: 1 | -1) => {
     if (!adjustable) return;
     const change = delta * direction;
     void dispatch(sendIntent({ type: "addScore", playerId: player.id, amount: change }));
   };
 
-  /**
-   * A long press, not a tap, for the same reason deleting the game is one: this
-   * drops a player for everyone in the room and there is no undo. `onPress` is
-   * deliberately absent, so a tap does nothing at all — an accidental brush
-   * across the card cannot cost somebody their place in the game.
-   */
   const remove = () => {
     void dispatch(sendIntent({ type: "removePlayer", playerId: player.id }));
   };
@@ -206,20 +178,6 @@ export default function ScoreTrackingPage() {
     ]);
   };
 
-  /**
-   * Leaving, and then going where a user with no board can do something.
-   *
-   * Until this existed, `leaveScoreboard` was dispatched from exactly one place
-   * and that place only renders when there is no board to leave — so the leave
-   * path was dead, and a user who opened a game could not get out of it, short
-   * of deleting it. The confirmation is the same gate deleting the game uses: a
-   * single tap must not be enough to walk away from a game in progress, and
-   * leaving is the one control here that a pocket press would otherwise reach.
-   *
-   * Navigating only once the leave has actually happened. A refused leave keeps
-   * the board, and moving the user off a game they are still in — with nothing
-   * said about why — is the confusing half of that pair.
-   */
   const confirmLeave = async () => {
     const result = await dispatch(leaveScoreboard());
     if (leaveScoreboard.rejected.match(result)) return;
@@ -244,14 +202,6 @@ export default function ScoreTrackingPage() {
         <Text className="text-white font-sans-regular text-lg text-center">
           {error ?? "Enter a code on the Join tab, or start a new game."}
         </Text>
-        {/*
-          * "Dismiss", not "Retry": with `current === null` there is nothing to
-          * retry. No board means no code, and the saved session that would have
-          * carried one was either never written or has already been cleared.
-          * What this does is put the error away — `leaveScoreboard` resets the
-          * store, which nulls `error` and drops any stale session pointer — so
-          * a label promising a second attempt is a label that lies.
-          */}
         <Pressable
           onPress={() => void dispatch(leaveScoreboard())}
           className="border border-primary px-6 py-3"
@@ -278,11 +228,6 @@ export default function ScoreTrackingPage() {
         </View>
       </Pressable>
 
-      {/*
-        Its own row, and not inside the header: the header is a long press that
-        deletes the game, and a control that deletes and a control that leaves
-        should not be the same surface.
-      */}
       <View className="mx-8 flex-row items-center">
         <Pressable
           onPress={onLeave}

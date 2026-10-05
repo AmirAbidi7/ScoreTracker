@@ -173,17 +173,6 @@ describe("parseIntent", () => {
     expect(parseIntent({ type: "addScore", playerId: 1, amount: -Infinity })).toBeNull();
   });
 
-  /**
-   * "Finite" was never enough. `1e308` passes every check a UI that enables its
-   * button on `isFinite` would make, and two of them make the score `Infinity` —
-   * which `JSON.stringify` writes into the jsonb column as `null`. After that
-   * every client renders a blank score and `b.score - a.score` is `NaN`, so the
-   * ranking is gone as well as the score, and nothing the client can send will
-   * bring it back.
-   *
-   * `2.5` and `-2.5` are the same defect in miniature: a score that is not an
-   * integer is not a score, and `p.score + p.score` drifts immediately.
-   */
   test.each([
     ["a magnitude that overflows a double", 1e308],
     ["the negative of one", -1e308],
@@ -197,7 +186,6 @@ describe("parseIntent", () => {
     expect(parseIntent({ type: "addScore", playerId: 1, amount })).toBeNull();
   });
 
-  /** A bound, not a ban: the largest amount a real board could plausibly need. */
   test.each([
     ["a million", 1_000_000],
     ["a million down", -1_000_000],
@@ -216,12 +204,6 @@ describe("parseIntent", () => {
     expect(parseIntent({ type: "addScore", playerId: 1, amount: -1_000_001 })).toBeNull();
   });
 
-  /**
-   * A `playerId` names a row, so `2.5` matches nothing and `1e308` could not name
-   * one either. Rejecting the fraction here turns a 400 with a useful reason into
-   * a 400 with "no player with id 2.5" — the difference between the client being
-   * told its payload is malformed and being told its player does not exist.
-   */
   test.each([
     ["a fraction", 2.5],
     ["a negative fraction", -2.5],

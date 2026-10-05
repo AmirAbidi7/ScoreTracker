@@ -60,11 +60,6 @@ const getScoreboards =
       res.status(StatusCodes.OK).json(scoreboards);
     });
 
-/**
- * No `updateScoreboard` here, deliberately. It took a board from the request body
- * and wrote it, so any HTTP client could author a score — which is the one thing
- * the intents path exists to prevent. See the note in `routes/scoreboardController.ts`.
- */
 const deleteScoreboard =
   (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
   (req: Request<{ id: string }>, res: Response) =>

@@ -7,39 +7,18 @@ import {
   type SavedSession,
 } from "../src/features/scoreTracking/domain/ScoreboardSession";
 
-/**
- * Pinned rather than imported: `KEY` is module-private on purpose, and pinning
- * the string here means dropping the version suffix — the one thing that stops a
- * future build from being misread by an installed one — fails a test instead of
- * quietly orphaning every existing user's session.
- */
 const KEY = "playboard.session.v1";
 
-/** The mock's backing store, which the published `AsyncStorageStatic` type does not describe. */
 const backing = () =>
   (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
     .__INTERNAL_MOCK_STORAGE__;
 
-/** Seeds a raw entry, bypassing `setItem` so corrupt bytes can be written. */
 const seed = (raw: string) => {
   backing()[KEY] = raw;
 };
 
 const stored = () => backing()[KEY];
 
-/**
- * The storage mock's methods are already shared `jest.fn`s, and `jest.spyOn`
- * *reuses* a property that is already a mock instead of wrapping it. Both
- * consequences bite here: a spy inherits call history from earlier tests, and a
- * `...Once` implementation queued by a test that never consumes it leaks into
- * whichever later test calls that method — turning one real failure into a
- * cascade of phantom ones.
- *
- * So every test gets freshly built wrappers delegating to the pristine
- * originals. History and once-queues start empty and cannot escape the test that
- * created them, and the wrappers are still mocks, so `not.toHaveBeenCalled()`
- * stays meaningful.
- */
 const pristine = {
   getItem: AsyncStorage.getItem,
   setItem: AsyncStorage.setItem,
@@ -97,16 +76,6 @@ describe("readSavedSession", () => {
     expect(await readSavedSession()).toEqual({ id: "board-1", code: "AB12CD" });
   });
 
-  /**
-   * The assertion this file exists for.
-   *
-   * A partial write is the most likely corruption, and it is the one the
-   * original implementation got wrong: its `removeItem(KEY)` sat after the shape
-   * check, so a `JSON.parse` throw jumped straight to the `catch` and returned
-   * `null` while leaving the corrupt entry in place — meaning every future
-   * launch re-ran the failing parse forever. Returning `null` is only half the
-   * contract; the entry has to go as well.
-   */
   test.each([
     ["a truncated write", '{"id":"board-1","co'],
     ["a bare word", "not json at all"],
@@ -126,15 +95,6 @@ describe("readSavedSession", () => {
     expect(stored()).toBeUndefined();
   });
 
-  /**
-   * The deliberate converse of the assertion above.
-   *
-   * A failed read is not a corrupt entry — it is a native module that was not
-   * ready, a bridge hiccup, a full disk. Deleting on that basis would cost
-   * someone their place in a game they are still playing, and the symptom
-   * ("the app sometimes forgets my game") is precisely what this module exists to
-   * prevent. Nothing is known about the entry, so nothing may be removed.
-   */
   test("returns null without deleting the entry when the storage read fails", async () => {
     seed(JSON.stringify({ id: "board-1", code: "AB12CD" }));
     storage.getItem.mockRejectedValueOnce(new Error("native module not ready"));
@@ -173,10 +133,6 @@ describe("readSavedSession", () => {
     expect(stored()).toBeUndefined();
   });
 
-  /**
-   * A blank field is garbage, not a session: the server would reject the code
-   * and the user would be back on the Join screen with no way forward.
-   */
   test.each([
     ["a blank id and code", '{"id":"","code":""}'],
     ["a blank code", '{"id":"board-1","code":""}'],
@@ -190,14 +146,6 @@ describe("readSavedSession", () => {
     expect(stored()).toBeUndefined();
   });
 
-  /**
-   * The storage mock cannot express this one: its `getItem` reads
-   * `storage[key] || null`, which collapses a stored `""` to `null`, and its
-   * `removeItem` skips falsy entries, so the delete could not be observed in the
-   * backing store either. The real `getItem` returns the empty string it was
-   * given, so the read has to cope with it — hence the per-test wrapper override
-   * and the assertion on the call rather than on the store.
-   */
   test("treats an empty-string entry as absent and cleans it up", async () => {
     seed("");
     storage.getItem.mockResolvedValueOnce("");
@@ -229,17 +177,6 @@ describe("readSavedSession", () => {
     expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
-  /**
-   * `getItem` is typed `string | null`, so `undefined` means a broken runtime or
-   * a careless mock rather than a real stored value. It is still a read that
-   * produced no session, and the entry is no more usable than a corrupt one, so
-   * it is cleaned up on the same path.
-   *
-   * This is the case that pins `raw === null` over a truthiness check. Under
-   * `!raw` the read would answer `null` here just the same, and the only
-   * observable difference is the missing `removeItem` call — which is what this
-   * asserts.
-   */
   test("discards the entry when the storage read resolves undefined", async () => {
     seed(JSON.stringify({ id: "board-1", code: "AB12CD" }));
     storage.getItem.mockResolvedValueOnce(undefined);
@@ -253,8 +190,6 @@ describe("readSavedSession", () => {
     seed("not json at all");
     storage.removeItem.mockRejectedValueOnce(new Error("storage unavailable"));
 
-    // The read has already decided there is no session; a failed delete must not
-    // turn that into a boot-time failure. The next launch retries the cleanup.
     await expect(readSavedSession()).resolves.toBeNull();
   });
 
@@ -282,8 +217,6 @@ describe("writeSavedSession", () => {
   });
 
   test("does not persist board data a wider caller passed by mistake", async () => {
-    // A `Scoreboard` handed to this function must not put scores or a player
-    // list on disk: the session is a pointer, not a cache.
     await writeSavedSession({
       id: "board-1",
       code: "AB12CD",
@@ -297,11 +230,6 @@ describe("writeSavedSession", () => {
     expect(stored()).not.toContain("score");
   });
 
-  /**
-   * A no-op rather than a throw: callers will not await this, so a throw would
-   * surface as an unhandled rejection in a later task's async flow. Writing a
-   * blank code would only manufacture an entry the next read has to delete.
-   */
   test.each([
     ["a blank code", { id: "board-1", code: "" }],
     ["a blank id", { id: "", code: "AB12CD" }],
@@ -339,9 +267,6 @@ describe("writeSavedSession", () => {
       throw new Error("native module missing");
     });
 
-    // Being `async` is load-bearing: a throw here must not escape at the call
-    // site, where a caller that does not await would turn it into an unhandled
-    // rejection.
     const pending = writeSavedSession({ id: "b", code: "C" });
 
     expect(pending).toBeInstanceOf(Promise);
