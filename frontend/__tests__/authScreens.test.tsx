@@ -19,6 +19,12 @@ const clerk = jest.requireMock("@clerk/expo") as {
 
 beforeEach(() => {
   clerk.__clerkReset();
+  // The form tests cover the configured path; missing-key has its own suite.
+  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY = "pk_test_configured";
+});
+
+afterEach(() => {
+  delete process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 });
 
 describe("auth screens: email sign-in", () => {

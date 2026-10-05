@@ -152,4 +152,76 @@ describe("socket: intents require a session token", () => {
     const result = await Effect.runPromise(Effect.result(verifySessionTokenLive("any-token")));
     expect(result._tag).toBe("Failure");
   });
+
+  test("a verified token is reused within the TTL instead of re-verified", async () => {
+    let calls = 0;
+    const updated: unknown[] = [];
+    const socket = setup({
+      verify: () =>
+        Effect.sync(() => {
+          calls += 1;
+          return { userId: "user_joiner" };
+        }),
+      intentService: {
+        applyIntentToCode: () => Effect.succeed(board),
+      },
+      socketService: {
+        updateScoreboard: (scoreboard) =>
+          Effect.sync(() => {
+            updated.push(scoreboard);
+          }),
+        disconnectFromScoreboard: () => Effect.void,
+      },
+    });
+    const acks: ScoreboardAck[] = [];
+    const payload = { code: "AB12CD", intent: { type: "addPlayer", name: "Bo" }, token: "same-token" };
+    socket.fire("scoreboard:intent", payload, (ack: ScoreboardAck) => {
+      acks.push(ack);
+    });
+    socket.fire("scoreboard:intent", payload, (ack: ScoreboardAck) => {
+      acks.push(ack);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(acks.filter((ack) => ack.ok)).toHaveLength(2);
+    expect(calls).toBe(1);
+    expect(updated).toHaveLength(2);
+  });
+
+  test("a revoked token is refused once the TTL expires", async () => {
+    let revoked = false;
+    const updated: unknown[] = [];
+    const socket = setup({
+      verify: () =>
+        revoked
+          ? Effect.fail(new UnauthorizedError({ message: "Invalid or expired session" }))
+          : Effect.succeed({ userId: "user_joiner" }),
+      intentService: {
+        applyIntentToCode: () => Effect.succeed(board),
+      },
+      socketService: {
+        updateScoreboard: (scoreboard) =>
+          Effect.sync(() => {
+            updated.push(scoreboard);
+          }),
+        disconnectFromScoreboard: () => Effect.void,
+      },
+      verifiedTokenTtlMs: 5,
+    });
+    const acks: ScoreboardAck[] = [];
+    const payload = { code: "AB12CD", intent: { type: "addPlayer", name: "Bo" }, token: "revoked-soon" };
+    socket.fire("scoreboard:intent", payload, (ack: ScoreboardAck) => {
+      acks.push(ack);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(acks[0]?.ok).toBe(true);
+
+    revoked = true;
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    socket.fire("scoreboard:intent", payload, (ack: ScoreboardAck) => {
+      acks.push(ack);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(acks[1]).toEqual({ ok: false, code: 401, message: "Sign in to change this board" });
+    expect(updated).toHaveLength(1);
+  });
 });

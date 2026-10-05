@@ -1,10 +1,10 @@
-import { useAuth } from "@clerk/expo";
 import { useEffect } from "react";
 import { apiClient } from "../../../infrastructure/api/client";
 import { scoreboardService } from "../scoreTracking/domain/ScoreboardService";
+import { useSafeAuth } from "./safeAuth";
 
 export const useAuthTokenBridge = (): void => {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn } = useSafeAuth();
 
   useEffect(() => {
     if (!isSignedIn) {

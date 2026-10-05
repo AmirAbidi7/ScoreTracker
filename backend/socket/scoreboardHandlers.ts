@@ -18,9 +18,13 @@ export type ScoreboardHandlerDeps = {
   readonly verify?: VerifySessionToken;
   readonly intentService?: ScoreboardIntentServiceInterface;
   readonly socketService?: ScoreboardSocketInterface;
+  readonly verifiedTokenTtlMs?: number;
 };
 
-const VERIFIED_TOKEN_TTL_MS = 60_000;
+// Per-intent verify would pay Clerk latency on every tap, so verified tokens are
+// cached per socket; the short TTL bounds how long a revoked token still works.
+// TODO: measure per-intent latency with live keys; drop the cache if p99 is negligible.
+const DEFAULT_VERIFIED_TOKEN_TTL_MS = 30_000;
 
 const readCode = (payload: unknown): string | null => {
   if (typeof payload === "string") return payload;
@@ -76,8 +80,7 @@ export const registerScoreboardHandlers = (io: Server, deps?: ScoreboardHandlerD
   const verify = deps?.verify ?? verifySessionTokenLive;
   const intents = deps?.intentService ?? intentService;
   const sockets = deps?.socketService ?? socketService;
-  // Verify-before-apply per intent; verified tokens are cached per socket with a
-  // short TTL so rapid score taps do not pay Clerk latency on every tap.
+  const verifiedTokenTtlMs = deps?.verifiedTokenTtlMs ?? DEFAULT_VERIFIED_TOKEN_TTL_MS;
   const verifiedBySocket = new WeakMap<object, Map<string, { userId: string; until: number }>>();
 
   const verifiedUserId = (socket: object, token: string): Effect.Effect<string, { code: number; message: string }> =>
@@ -92,7 +95,7 @@ export const registerScoreboardHandlers = (io: Server, deps?: ScoreboardHandlerD
       const claims = yield* verify(token).pipe(
         Effect.mapError(() => ({ code: 401, message: "Sign in to change this board" })),
       );
-      cached.set(token, { userId: claims.userId, until: Date.now() + VERIFIED_TOKEN_TTL_MS });
+      cached.set(token, { userId: claims.userId, until: Date.now() + verifiedTokenTtlMs });
       return claims.userId;
     });
 

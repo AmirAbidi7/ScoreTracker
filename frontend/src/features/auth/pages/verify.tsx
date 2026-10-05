@@ -4,10 +4,17 @@ import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { colors } from "../../../../constants/theme";
 import { describeClerkError } from "../clerkErrors";
+import { AuthUnavailable } from "../authUnavailable";
+import { isClerkConfigured } from "../safeAuth";
 
 const JOIN_ROUTE = "/(main)/(scoreTracking)/syncGame";
 
 export default function VerifyScreen() {
+  if (!isClerkConfigured()) return <AuthUnavailable />;
+  return <VerifyForm />;
+}
+
+function VerifyForm() {
   const { signUp } = useSignUp();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);

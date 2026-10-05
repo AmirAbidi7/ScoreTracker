@@ -2,8 +2,8 @@ import { clsx } from "clsx";
 import { router } from "expo-router";
 import { useState, type ComponentProps } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useAuth } from "@clerk/expo";
 import { colors } from "../../../constants/theme";
+import { useSafeAuth } from "../auth/safeAuth";
 import { useAppDispatch, useAppSelector } from "../../../store";
 import {
   rejectionReason,
@@ -49,7 +49,7 @@ const SCOREBOARD_ROUTE = "/(main)/(scoreTracking)/scoreTracking";
 
 export default function SyncGame() {
   const dispatch = useAppDispatch();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn } = useSafeAuth();
   const [code, setCode] = useState("");
   const [gameName, setGameName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);

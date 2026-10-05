@@ -7,6 +7,8 @@ import { colors } from "../../../../constants/theme";
 import { isExpoGo } from "../../../../infrastructure/auth/isExpoGo";
 import { useWarmUpBrowser } from "../../../../infrastructure/auth/useWarmUpBrowser";
 import { describeClerkError } from "../clerkErrors";
+import { AuthUnavailable } from "../authUnavailable";
+import { isClerkConfigured } from "../safeAuth";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,6 +26,11 @@ const afterAuth = (): void => {
 };
 
 export default function SignInScreen() {
+  if (!isClerkConfigured()) return <AuthUnavailable />;
+  return <SignInForm />;
+}
+
+function SignInForm() {
   useWarmUpBrowser();
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();

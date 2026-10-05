@@ -3,9 +3,9 @@ import { Plus, Trash } from "lucide-react-native";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useAuth } from "@clerk/expo";
 import { colors } from "../../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../../store";
+import { useSafeAuth } from "../../auth/safeAuth";
 import BoardQrCode from "../boardQrCode";
 import type { Player } from "../domain/Scoreboard";
 import {
@@ -18,17 +18,20 @@ import {
 const JOIN_ROUTE = "/(main)/(scoreTracking)/syncGame";
 const SIGN_IN_ROUTE = "/(auth)/sign-in";
 
-const AddPlayerModal = ({
+export const AddPlayerModal = ({
   active,
   onClose,
+  readOnly,
 }: {
   active: boolean;
   onClose: () => void;
+  readOnly: boolean;
 }) => {
   const [playerName, setPlayerName] = useState("");
   const dispatch = useAppDispatch();
 
   const submit = () => {
+    if (readOnly) return;
     const name = playerName.trim();
     if (name.length === 0) return;
     void dispatch(sendIntent({ type: "addPlayer", name }));
@@ -57,7 +60,13 @@ const AddPlayerModal = ({
                 <Text className="text-white font-sans-regular text-md">Cancel</Text>
               </View>
             </Pressable>
-            <Pressable onPress={submit} testID="add-player-button">
+            <Pressable
+              onPress={submit}
+              testID="add-player-button"
+              disabled={readOnly}
+              accessibilityState={{ disabled: readOnly }}
+              className={clsx(readOnly && "opacity-50")}
+            >
               <View className="bg-black border border-primary p-2">
                 <Text className="text-white font-sans-regular text-md">Add!</Text>
               </View>
@@ -168,7 +177,7 @@ const PlayerCard = ({
 
 export default function ScoreTrackingPage() {
   const dispatch = useAppDispatch();
-  const { isSignedIn, userId } = useAuth();
+  const { isSignedIn, userId } = useSafeAuth();
   const { current, status, pendingIntents, error } = useAppSelector((state) => state.scoreboard);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -325,11 +334,12 @@ export default function ScoreTrackingPage() {
         ))}
       </ScrollView>
 
-      <AddPlayerModal active={modalOpen} onClose={() => setModalOpen(false)} />
+      <AddPlayerModal active={modalOpen} onClose={() => setModalOpen(false)} readOnly={!canEdit} />
 
       <Pressable
         onPress={() => setModalOpen(true)}
         disabled={!canEdit}
+        accessibilityState={{ disabled: !canEdit }}
         className="absolute bottom-0 right-0"
         testID="add-player-fab"
       >

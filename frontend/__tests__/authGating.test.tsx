@@ -7,7 +7,7 @@ import { Provider } from "react-redux";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 import type { ScoreboardService } from "../src/features/scoreTracking/domain/ScoreboardService";
 import { scoreboardService } from "../src/features/scoreTracking/domain/ScoreboardService";
-import ScoreTrackingPage from "../src/features/scoreTracking/pages/scoreTracking";
+import ScoreTrackingPage, { AddPlayerModal } from "../src/features/scoreTracking/pages/scoreTracking";
 import reducer, { applyBoard } from "../src/features/scoreTracking/scoreTrackingSlice";
 
 jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
@@ -93,6 +93,28 @@ describe("auth gating: signed-in on an ownerless board", () => {
     await renderBoard(null);
 
     expect(screen.getByTestId("add-score-1").props.accessibilityState?.disabled).toBe(true);
+  });
+});
+
+describe("auth gating: the add-player form", () => {
+  test("a read-only viewer cannot submit from the form", async () => {
+    const store = configureStore({ reducer: { scoreboard: reducer } });
+    await render(
+      <Provider store={store}>
+        <AddPlayerModal active onClose={() => {}} readOnly />
+      </Provider>,
+    );
+
+    await fireEvent.changeText(screen.getByTestId("player-name-input"), "Bryan");
+    await fireEvent.press(screen.getByTestId("add-player-button"));
+
+    expect(service.sendIntent).not.toHaveBeenCalled();
+  });
+
+  test("the add-player button stays disabled for viewers who cannot edit", async () => {
+    await renderBoard("user_owner");
+
+    expect(screen.getByTestId("add-player-fab").props.accessibilityState?.disabled).toBe(true);
   });
 });
 
