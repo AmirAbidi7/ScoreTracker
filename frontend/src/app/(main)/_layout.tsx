@@ -1,5 +1,6 @@
 import Logo from "@/assets/vectors/logo.svg";
 import { useScoreboardSync } from "@/features/scoreTracking/useScoreboardSync";
+import { useAuthTokenBridge } from "@/features/auth/useAuthTokenBridge";
 import { clsx } from "clsx";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
@@ -26,6 +27,7 @@ const Header = () => {
 
 export default function MainLayout() {
   useScoreboardSync();
+  useAuthTokenBridge();
 
   return (
     <>

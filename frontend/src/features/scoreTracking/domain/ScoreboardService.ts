@@ -1,4 +1,4 @@
-import { ApiClient, apiClient } from "../../../../infrastructure/api/client";
+import { ApiClient, apiClient, type TokenProvider } from "../../../../infrastructure/api/client";
 import {
   createSocket,
   joinRoom,
@@ -31,6 +31,7 @@ export type ScoreboardServiceOptions = {
   apiClient?: ApiClient;
   createSocket?: () => SocketLike;
   reconnectDelays?: number[];
+  tokenProvider?: TokenProvider;
 };
 
 const DEFAULT_RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 15000];
@@ -52,6 +53,7 @@ export class ScoreboardService {
   private readonly api: ApiClient;
   private readonly createSocket: () => SocketLike;
   private readonly reconnectDelays: number[];
+  private tokenProvider: TokenProvider | null;
 
   private socket: SocketLike | null = null;
   private handlers: Record<string, (...args: any[]) => void> = {};
@@ -66,6 +68,16 @@ export class ScoreboardService {
     this.api = options.apiClient ?? apiClient;
     this.createSocket = options.createSocket ?? (() => createSocket());
     this.reconnectDelays = options.reconnectDelays ?? DEFAULT_RECONNECT_DELAYS;
+    this.tokenProvider = options.tokenProvider ?? null;
+  }
+
+  setTokenProvider(provider: TokenProvider | null): void {
+    this.tokenProvider = provider;
+  }
+
+  private resolveToken(): Promise<string | null> {
+    if (!this.tokenProvider) return Promise.resolve(null);
+    return this.tokenProvider().catch(() => null);
   }
 
   get currentCode(): string | null {
@@ -247,6 +259,15 @@ export class ScoreboardService {
     this.setStatus("idle");
   }
 
+  async claimScoreboard(): Promise<Scoreboard> {
+    const board = this.current;
+    if (!board) throw new Error("No board to claim");
+    const claimed = await this.api.claimScoreboard(board.id);
+    this.current = claimed;
+    this.emit({ type: "board", board: claimed });
+    return claimed;
+  }
+
   sendIntent(intent: ScoreboardIntent): Promise<SendIntentResult> {
     const socket = this.socket;
     const board = this.current;
@@ -254,8 +275,10 @@ export class ScoreboardService {
       return Promise.resolve({ ok: false, code: 0, message: "Not connected to the server" });
     }
     const boardId = board.id;
-    return emitIntent(socket, board.code, intent).then((ack) =>
-      !ack.ok || this.stillTracking(socket, boardId) ? ack : { ok: "superseded", board: ack.scoreboard },
+    return this.resolveToken().then((token) =>
+      emitIntent(socket, board.code, intent, token).then((ack) =>
+        !ack.ok || this.stillTracking(socket, boardId) ? ack : { ok: "superseded", board: ack.scoreboard },
+      ),
     );
   }
 }

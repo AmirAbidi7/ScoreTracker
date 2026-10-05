@@ -10,4 +10,5 @@ export interface Scoreboard {
   code: string;
   players: Player[];
   updateTime: string;
+  ownerId: string | null;
 }

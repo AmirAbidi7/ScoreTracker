@@ -20,18 +20,33 @@ export class ApiClientError extends Error {
   }
 }
 
+export type TokenProvider = () => Promise<string | null>;
+
 export type ApiClientOptions = {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  tokenProvider?: TokenProvider;
 };
 
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private tokenProvider: TokenProvider | null;
 
   constructor(options: ApiClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? API_BASE_URL).replace(/\/+$/, "");
     this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+    this.tokenProvider = options.tokenProvider ?? null;
+  }
+
+  setTokenProvider(provider: TokenProvider | null): void {
+    this.tokenProvider = provider;
+  }
+
+  private async authHeaders(): Promise<Record<string, string>> {
+    if (!this.tokenProvider) return {};
+    const token = await this.tokenProvider().catch(() => null);
+    return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -40,7 +55,7 @@ export class ApiClient {
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         ...init,
-        headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+        headers: { "Content-Type": "application/json", ...(await this.authHeaders()), ...(init?.headers ?? {}) },
       });
     } catch (cause) {
       throw new ApiClientError(
@@ -88,6 +103,12 @@ export class ApiClient {
 
   deleteScoreboard(id: string): Promise<void> {
     return this.request<void>(`/api/scoreboard/${encodePathSegment(id)}`, { method: "DELETE" });
+  }
+
+  claimScoreboard(id: string): Promise<Scoreboard> {
+    return this.request<Scoreboard>(`/api/scoreboard/${encodePathSegment(id)}/claim`, {
+      method: "POST",
+    });
   }
 }
 

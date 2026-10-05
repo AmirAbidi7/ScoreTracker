@@ -49,6 +49,7 @@ export const sendIntent = (
   socket: SocketLike,
   code: string,
   intent: ScoreboardIntent,
+  token?: string | null,
   timeoutMs = 8000,
 ): Promise<ScoreboardAck> =>
   new Promise((resolve) => {
@@ -70,5 +71,5 @@ export const sendIntent = (
       timeoutMs,
     );
 
-    socket.emit("scoreboard:intent", { code, intent }, finish);
+    socket.emit("scoreboard:intent", { code, intent, ...(token ? { token } : {}) }, finish);
   });

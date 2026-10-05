@@ -10,6 +10,7 @@ const INTENT_REJECTED = "scoreboard/intent/rejected";
 const RESTORE_REJECTED = "scoreboard/restore/rejected";
 const LEAVE_REJECTED = "scoreboard/leave/rejected";
 const DELETE_REJECTED = "scoreboard/delete/rejected";
+const CLAIM_REJECTED = "scoreboard/claim/rejected";
 
 export interface ScoreboardState {
   current: Scoreboard | null;
@@ -109,6 +110,13 @@ const scoreboardSlice = createSlice({
       .addCase(
         DELETE_REJECTED,
         (state, action: PayloadAction<string> & Action<typeof DELETE_REJECTED>) => {
+          const message = rejectionReason(action);
+          if (message !== null) state.error = message;
+        },
+      )
+      .addCase(
+        CLAIM_REJECTED,
+        (state, action: PayloadAction<string> & Action<typeof CLAIM_REJECTED>) => {
           const message = rejectionReason(action);
           if (message !== null) state.error = message;
         },

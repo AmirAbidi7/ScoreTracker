@@ -137,6 +137,19 @@ export const deleteCurrentScoreboard = createAsyncThunk(
   },
 );
 
+export const claimCurrentScoreboard = createAsyncThunk(
+  "scoreboard/claim",
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      const board = await scoreboardService.claimScoreboard();
+      dispatch(applyBoard(board));
+      return board;
+    } catch (error) {
+      return rejectWithValue(describeError(error, "Couldn't claim this board"));
+    }
+  },
+);
+
 export const restoreSession = createAsyncThunk(
   "scoreboard/restore",
   async (_, { dispatch, rejectWithValue }) => {
