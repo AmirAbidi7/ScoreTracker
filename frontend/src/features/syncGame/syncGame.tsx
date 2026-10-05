@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import { router } from "expo-router";
 import { useState, type ComponentProps } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { colors } from "../../../constants/theme";
@@ -9,6 +10,7 @@ import {
 } from "../scoreTracking/rejectionReason";
 import { createScoreboard, joinScoreboard } from "../scoreTracking/scoreTrackingThunks";
 import BoardQrCode from "../scoreTracking/boardQrCode";
+import QrScanner from "./qrScanner";
 
 const Field = ({ label, ...input }: { label: string } & ComponentProps<typeof TextInput>) => (
   <View className="gap-2">
@@ -42,12 +44,15 @@ const Button = ({
   </Pressable>
 );
 
+const SCOREBOARD_ROUTE = "/(main)/(scoreTracking)/scoreTracking";
+
 export default function SyncGame() {
   const dispatch = useAppDispatch();
   const [code, setCode] = useState("");
   const [gameName, setGameName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState<"join" | "create" | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const current = useAppSelector((state) => state.scoreboard.current);
 
@@ -101,6 +106,28 @@ export default function SyncGame() {
     );
   };
 
+  const onScanned = (data: string) => {
+    setScanOpen(false);
+    void run(
+      "join",
+      async () => {
+        const result = await dispatch(joinScoreboard(data));
+        if (joinScoreboard.rejected.match(result)) return result;
+        router.replace(SCOREBOARD_ROUTE);
+        return null;
+      },
+      "Couldn't join",
+    );
+  };
+
+  if (scanOpen) {
+    return (
+      <View className="bg-black flex-1">
+        <QrScanner onScanned={onScanned} onClose={() => setScanOpen(false)} />
+      </View>
+    );
+  }
+
   if (current) {
     return (
       <View
@@ -149,6 +176,12 @@ export default function SyncGame() {
           testID="join-button"
           label={pending === "join" ? "Joining..." : "Join"}
           onPress={onJoin}
+          disabled={pending !== null}
+        />
+        <Button
+          testID="scan-button"
+          label="Scan"
+          onPress={() => setScanOpen(true)}
           disabled={pending !== null}
         />
       </View>
