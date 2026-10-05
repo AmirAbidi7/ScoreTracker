@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { colors } from "../../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../../store";
+import BoardQrCode from "../boardQrCode";
 import type { Player } from "../domain/Scoreboard";
 import {
   deleteCurrentScoreboard,
@@ -239,6 +240,10 @@ export default function ScoreTrackingPage() {
         >
           <Text className="text-secondary font-sans-medium text-lg">Leave</Text>
         </Pressable>
+      </View>
+
+      <View className="mx-8">
+        <BoardQrCode code={current.code} />
       </View>
 
       {(status === "connecting" || status === "reconnecting" || status === "offline") && (

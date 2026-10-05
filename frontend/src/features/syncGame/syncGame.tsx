@@ -8,6 +8,7 @@ import {
   type RejectionCarrier,
 } from "../scoreTracking/rejectionReason";
 import { createScoreboard, joinScoreboard } from "../scoreTracking/scoreTrackingThunks";
+import BoardQrCode from "../scoreTracking/boardQrCode";
 
 const Field = ({ label, ...input }: { label: string } & ComponentProps<typeof TextInput>) => (
   <View className="gap-2">
@@ -113,6 +114,7 @@ export default function SyncGame() {
             {current.code}
           </Text>
         </Text>
+        <BoardQrCode code={current.code} />
         <Text className="text-white font-sans-regular text-md text-center">
           Share that code and anyone can follow this board live.
         </Text>
