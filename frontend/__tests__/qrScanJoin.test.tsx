@@ -3,7 +3,6 @@ import { configureStore } from "@reduxjs/toolkit";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { Provider } from "react-redux";
-import { tabs } from "../constants/data";
 import { ApiClientError } from "../infrastructure/api/client";
 import type { Scoreboard } from "../src/features/scoreTracking/domain/Scoreboard";
 import {
@@ -70,11 +69,7 @@ const board: Scoreboard = {
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });
 
-const scoreboardRoute = (): string => {
-  const tab = tabs.find((candidate) => candidate.title === "Scoreboard");
-  if (!tab) throw new Error("constants/data.ts has no Scoreboard tab");
-  return `/(main)/${tab.name}`;
-};
+const SCOREBOARD_ROUTE = "/(main)/(scoreTracking)/scoreTracking";
 
 const openScanner = async (): Promise<void> => {
   await fireEvent.press(screen.getByTestId("scan-button"));
@@ -124,7 +119,19 @@ describe("scanning a board QR", () => {
 
     await scan("AB12CD");
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(scoreboardRoute()));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(SCOREBOARD_ROUTE));
+  });
+
+  it("opens a scanner whose torch starts off limits until the preview is live", async () => {
+    await openScanner();
+
+    expect(screen.getByTestId("torch-toggle")).toBeDisabled();
+
+    await act(async () => {
+      screen.getByTestId("camera-view").props.onCameraReady();
+    });
+
+    expect(screen.getByTestId("torch-toggle")).not.toBeDisabled();
   });
 
   it("closes the scanner on first scan, so a held frame cannot join twice", async () => {
@@ -145,7 +152,7 @@ describe("scanning a board QR", () => {
       release(board);
     });
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(scoreboardRoute()));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(SCOREBOARD_ROUTE));
     expect(service.joinScoreboard).toHaveBeenCalledTimes(1);
   });
 

@@ -15,13 +15,17 @@ export default function QrScanner({
   const [permission, requestPermission] = useCameraPermissions();
   const [focused, setFocused] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const scanned = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      return () => setFocused(false);
+      return () => {
+        setFocused(false);
+        setCameraReady(false);
+      };
     }, []),
   );
 
@@ -45,7 +49,7 @@ export default function QrScanner({
     onScanned(result.data);
   };
 
-  if (available === null || permission === null) {
+  if (available === null || !permission) {
     return (
       <View className="flex-1 bg-black items-center justify-center" testID="scanner-loading">
         <Text className="text-white font-sans-regular text-lg">Starting the camera...</Text>
@@ -106,6 +110,7 @@ export default function QrScanner({
           facing="back"
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
           onBarcodeScanned={handleScanned}
+          onCameraReady={() => setCameraReady(true)}
           enableTorch={torchOn}
           style={{ flex: 1 }}
         />
@@ -114,12 +119,12 @@ export default function QrScanner({
         <Pressable
           onPress={() => setTorchOn((on) => !on)}
           testID="torch-toggle"
-          disabled={!torchAvailable}
+          disabled={!torchAvailable || !cameraReady}
           accessibilityRole="button"
           accessibilityLabel={torchOn ? "Turn the torch off" : "Turn the torch on"}
-          accessibilityState={{ disabled: !torchAvailable }}
+          accessibilityState={{ disabled: !torchAvailable || !cameraReady }}
           className="border border-primary px-6 py-3"
-          style={!torchAvailable ? { opacity: 0.5 } : undefined}
+          style={!torchAvailable || !cameraReady ? { opacity: 0.5 } : undefined}
         >
           <Text className="text-white font-sans-medium text-lg">
             {torchOn ? "Torch on" : "Torch"}

@@ -132,6 +132,16 @@ describe("permissions", () => {
     expect(Linking.openSettings).toHaveBeenCalledTimes(1);
     expect(requestPermission).not.toHaveBeenCalled();
   });
+
+  it("stays on loading while the permission hook returns undefined", async () => {
+    permissions.mockReturnValue([undefined, requestPermission]);
+
+    await renderScanner();
+
+    await waitFor(() => expect(camera.isAvailableAsync).toHaveBeenCalled());
+    expect(screen.getByTestId("scanner-loading")).toBeOnTheScreen();
+    expect(screen.queryByTestId("camera-view")).toBeNull();
+  });
 });
 
 describe("the live preview", () => {
@@ -175,10 +185,28 @@ describe("the live preview", () => {
 });
 
 describe("torch", () => {
+  const previewReady = async (): Promise<void> => {
+    await act(async () => {
+      screen.getByTestId("camera-view").props.onCameraReady();
+    });
+  };
+
+  it("keeps the torch off limits until the preview is live", async () => {
+    await renderScanner();
+
+    await screen.findByTestId("camera-view");
+    expect(screen.getByTestId("torch-toggle")).toBeDisabled();
+
+    await previewReady();
+
+    expect(screen.getByTestId("torch-toggle")).not.toBeDisabled();
+  });
+
   it("starts off and toggles the camera torch on press", async () => {
     await renderScanner();
 
     await screen.findByTestId("camera-view");
+    await previewReady();
     expect(screen.getByTestId("camera-view").props.enableTorch).toBe(false);
 
     await fireEvent.press(screen.getByTestId("torch-toggle"));
@@ -194,6 +222,7 @@ describe("torch", () => {
     await renderScanner({ torchAvailable: false });
 
     await screen.findByTestId("camera-view");
+    await previewReady();
 
     expect(screen.getByTestId("torch-toggle")).toBeDisabled();
     expect(screen.getByTestId("camera-view").props.enableTorch).toBe(false);
