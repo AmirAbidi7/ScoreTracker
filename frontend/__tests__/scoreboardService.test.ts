@@ -23,6 +23,7 @@ const board: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 3 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const otherBoard: Scoreboard = {
@@ -31,6 +32,7 @@ const otherBoard: Scoreboard = {
   code: "ZZ99YY",
   players: [{ id: 7, name: "Bo", score: 1 }],
   updateTime: "2026-09-25T11:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeFakeSocket = (): FakeSocket => {
@@ -190,6 +192,7 @@ describe("ScoreboardService", () => {
     await service.joinScoreboard("AB12CD");
 
     const promise = service.sendIntent({ type: "addScore", playerId: 99, amount: 5 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const intentEmit = socket.emitted.find((e) => e.event === "scoreboard:intent");
     const ack = intentEmit!.args[1] as (a: unknown) => void;
     ack({ ok: false, code: 400, message: "no such player" });
@@ -316,6 +319,7 @@ describe("ScoreboardService", () => {
     expect(events).not.toContainEqual({ type: "board", board: stale });
 
     const pending = service.sendIntent({ type: "addScore", playerId: 7, amount: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const intent = second.emitted.find((e) => e.event === "scoreboard:intent");
     expect(intent!.args[0]).toEqual({
       code: "ZZ99YY",

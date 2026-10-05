@@ -1,4 +1,5 @@
 /// <reference types="jest" />
+jest.mock("@clerk/expo");
 import { configureStore } from "@reduxjs/toolkit";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Provider } from "react-redux";
@@ -25,12 +26,24 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
 
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
 
+const clerk = jest.requireMock("@clerk/expo") as {
+  __clerkState: { isSignedIn: boolean; userId: string | null };
+  __clerkReset: () => void;
+};
+
+beforeEach(() => {
+  clerk.__clerkReset();
+  clerk.__clerkState.isSignedIn = true;
+  clerk.__clerkState.userId = "user_owner";
+});
+
 const board: Scoreboard = {
   id: "board-1",
   gameName: "Catan",
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 0 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });

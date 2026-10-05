@@ -3,17 +3,20 @@ import { Plus, Trash } from "lucide-react-native";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useAuth } from "@clerk/expo";
 import { colors } from "../../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../../store";
 import BoardQrCode from "../boardQrCode";
 import type { Player } from "../domain/Scoreboard";
 import {
+  claimCurrentScoreboard,
   deleteCurrentScoreboard,
   leaveScoreboard,
   sendIntent,
 } from "../scoreTrackingThunks";
 
 const JOIN_ROUTE = "/(main)/(scoreTracking)/syncGame";
+const SIGN_IN_ROUTE = "/(auth)/sign-in";
 
 const AddPlayerModal = ({
   active,
@@ -66,13 +69,21 @@ const AddPlayerModal = ({
   );
 };
 
-const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) => {
+const PlayerCard = ({
+  player,
+  ranking,
+  readOnly,
+}: {
+  player: Player;
+  ranking: number;
+  readOnly: boolean;
+}) => {
   const [amount, setAmount] = useState("1");
   const dispatch = useAppDispatch();
 
   const parsed = Number(amount);
   const delta = Number.isFinite(parsed) ? parsed : 0;
-  const adjustable = delta !== 0;
+  const adjustable = delta !== 0 && !readOnly;
 
   const adjust = (direction: 1 | -1) => {
     if (!adjustable) return;
@@ -81,6 +92,7 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
   };
 
   const remove = () => {
+    if (readOnly) return;
     void dispatch(sendIntent({ type: "removePlayer", playerId: player.id }));
   };
 
@@ -156,8 +168,13 @@ const PlayerCard = ({ player, ranking }: { player: Player; ranking: number }) =>
 
 export default function ScoreTrackingPage() {
   const dispatch = useAppDispatch();
+  const { isSignedIn, userId } = useAuth();
   const { current, status, pendingIntents, error } = useAppSelector((state) => state.scoreboard);
   const [modalOpen, setModalOpen] = useState(false);
+
+  const ownerless = (current?.ownerId ?? null) === null;
+  const isOwner = isSignedIn && !ownerless && current?.ownerId === userId;
+  const canEdit = isSignedIn && !ownerless;
 
   const rankings = useMemo(() => {
     if (!current) return [];
@@ -168,7 +185,12 @@ export default function ScoreTrackingPage() {
     return current.players.map((player) => byScore.get(player.id) ?? 0);
   }, [current]);
 
+  const onClaim = () => {
+    void dispatch(claimCurrentScoreboard());
+  };
+
   const onDelete = () => {
+    if (!isOwner) return;
     Alert.alert("Delete game?", `${current?.gameName} and its scores will be gone for everyone.`, [
       { text: "Cancel", style: "cancel" },
       {
@@ -246,6 +268,30 @@ export default function ScoreTrackingPage() {
         <BoardQrCode code={current.code} />
       </View>
 
+      {!isSignedIn && (
+        <Pressable
+          testID="sign-in-prompt"
+          onPress={() => router.push(SIGN_IN_ROUTE)}
+          className="mx-8 border border-tertiary px-4 py-2"
+        >
+          <Text className="text-tertiary font-sans-medium text-lg text-center">
+            Sign in to keep score
+          </Text>
+        </Pressable>
+      )}
+
+      {isSignedIn && ownerless && (
+        <Pressable
+          testID="claim-board"
+          onPress={onClaim}
+          className="mx-8 border border-primary px-4 py-2"
+        >
+          <Text className="text-primary font-sans-medium text-lg text-center">
+            Claim this board
+          </Text>
+        </Pressable>
+      )}
+
       {(status === "connecting" || status === "reconnecting" || status === "offline") && (
         <Text testID="connection-banner" className="mx-8 text-yellow-500 font-sans-medium text-md">
           {status === "offline" ? "Offline" : "Reconnecting"}...
@@ -275,7 +321,7 @@ export default function ScoreTrackingPage() {
         )}
 
         {current.players.map((player, index) => (
-          <PlayerCard key={player.id} ranking={rankings[index]} player={player} />
+          <PlayerCard key={player.id} ranking={rankings[index]} player={player} readOnly={!canEdit} />
         ))}
       </ScrollView>
 
@@ -283,6 +329,7 @@ export default function ScoreTrackingPage() {
 
       <Pressable
         onPress={() => setModalOpen(true)}
+        disabled={!canEdit}
         className="absolute bottom-0 right-0"
         testID="add-player-fab"
       >

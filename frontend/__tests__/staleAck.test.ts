@@ -81,6 +81,7 @@ const boardA: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 0 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const boardB: Scoreboard = {
@@ -89,19 +90,22 @@ const boardB: Scoreboard = {
   code: "ZZ99YY",
   players: [{ id: 1, name: "Bo", score: 5 }],
   updateTime: "2026-09-25T10:05:00.000Z",
+  ownerId: "user_owner",
 };
 
 const scoredA: Scoreboard = {
   ...boardA,
   players: [{ id: 1, name: "Amir", score: 1 }],
   updateTime: "2026-09-25T10:00:01.000Z",
+  ownerId: "user_owner",
 };
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });
 type TestStore = ReturnType<typeof makeStore>;
 
-const tapOnA = (store: TestStore) => {
+const tapOnA = async (store: TestStore) => {
   const pending = store.dispatch(sendIntent({ type: "addScore", playerId: 1, amount: 1 }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
   const first = mockCreated[0];
   if (!first) throw new Error("the service never opened a socket for A");
   const emitted = first.emitted.find((e) => e.event === "scoreboard:intent");
@@ -130,7 +134,7 @@ describe("an answer that arrives after the user has switched games", () => {
     await store.dispatch(joinScoreboard("AB12CD"));
     expect(store.getState().scoreboard.current).toEqual(boardA);
 
-    const { pending, answer } = tapOnA(store);
+    const { pending, answer } = await tapOnA(store);
 
     await store.dispatch(joinScoreboard("ZZ99YY"));
     expect(store.getState().scoreboard.current).toEqual(boardB);
@@ -150,7 +154,7 @@ describe("an answer that arrives after the user has switched games", () => {
     const store = makeStore();
     await store.dispatch(joinScoreboard("AB12CD"));
 
-    const { pending, answer } = tapOnA(store);
+    const { pending, answer } = await tapOnA(store);
     await store.dispatch(joinScoreboard("ZZ99YY"));
 
     answer({ ok: false, code: 400, message: "scoreboard board-a has no player with id 1" });

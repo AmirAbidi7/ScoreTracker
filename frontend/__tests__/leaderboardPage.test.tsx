@@ -61,6 +61,7 @@ const catan: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 0 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const chess: Scoreboard = {
@@ -72,6 +73,7 @@ const chess: Scoreboard = {
     { id: 2, name: "Dolly", score: 0 },
   ],
   updateTime: "2026-09-25T11:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });
@@ -114,6 +116,7 @@ const uno: Scoreboard = {
   code: "QQ77QQ",
   players: [{ id: 1, name: "Sally", score: 0 }],
   updateTime: "2026-09-25T12:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 beforeEach(() => {

@@ -34,12 +34,14 @@ const board: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 3 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const later: Scoreboard = {
   ...board,
   players: [{ id: 1, name: "Amir", score: 8 }],
   updateTime: "2026-09-25T10:00:01.000Z",
+  ownerId: "user_owner",
 };
 
 const initial = reducer(undefined, { type: "@@INIT" });
@@ -85,6 +87,7 @@ describe("scoreboardSlice", () => {
       code: "ZZ99YY",
       players: [{ id: 1, name: "Bo", score: 12 }],
       updateTime: "2026-09-01T00:00:00.000Z",
+  ownerId: "user_owner",
     };
 
     const withGame = reducer(initial, applyBoard(board));
@@ -98,6 +101,7 @@ describe("scoreboardSlice", () => {
       code: "ZZ99YY",
       players: [{ id: 1, name: "Bo", score: 12 }],
       updateTime: "2026-09-26T10:00:00.000Z",
+  ownerId: "user_owner",
     };
 
     const away = reducer(reducer(initial, applyBoard(board)), applyBoard(secondGame));

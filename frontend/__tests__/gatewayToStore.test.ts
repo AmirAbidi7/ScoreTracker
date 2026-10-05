@@ -48,6 +48,7 @@ const board: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 3 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeApi = (overrides: Partial<Record<string, jest.Mock>> = {}) =>

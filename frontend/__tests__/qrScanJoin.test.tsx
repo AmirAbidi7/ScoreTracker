@@ -65,6 +65,7 @@ const board: Scoreboard = {
   code: "AB12CD",
   players: [{ id: 1, name: "Amir", score: 0 }],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });

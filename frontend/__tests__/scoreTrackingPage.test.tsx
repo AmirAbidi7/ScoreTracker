@@ -1,4 +1,5 @@
 /// <reference types="jest" />
+jest.mock("@clerk/expo");
 import { configureStore } from "@reduxjs/toolkit";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { router } from "expo-router";
@@ -33,6 +34,17 @@ jest.mock("../src/features/scoreTracking/domain/ScoreboardService", () => ({
 jest.mock("expo-router", () => ({ router: { replace: jest.fn() } }));
 
 const service = scoreboardService as jest.Mocked<ScoreboardService>;
+
+const clerk = jest.requireMock("@clerk/expo") as {
+  __clerkState: { isSignedIn: boolean; userId: string | null };
+  __clerkReset: () => void;
+};
+
+beforeEach(() => {
+  clerk.__clerkReset();
+  clerk.__clerkState.isSignedIn = true;
+  clerk.__clerkState.userId = "user_owner";
+});
 const replace = router.replace as jest.MockedFunction<typeof router.replace>;
 
 const joinRoute = () => {
@@ -51,6 +63,7 @@ const board: Scoreboard = {
     { id: 3, name: "Sally", score: 8 },
   ],
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 };
 
 const makeStore = () => configureStore({ reducer: { scoreboard: reducer } });

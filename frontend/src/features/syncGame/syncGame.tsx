@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import { router } from "expo-router";
 import { useState, type ComponentProps } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useAuth } from "@clerk/expo";
 import { colors } from "../../../constants/theme";
 import { useAppDispatch, useAppSelector } from "../../../store";
 import {
@@ -48,6 +49,7 @@ const SCOREBOARD_ROUTE = "/(main)/(scoreTracking)/scoreTracking";
 
 export default function SyncGame() {
   const dispatch = useAppDispatch();
+  const { isSignedIn } = useAuth();
   const [code, setCode] = useState("");
   const [gameName, setGameName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -188,19 +190,33 @@ export default function SyncGame() {
 
       <View className="gap-4">
         <Text className="text-white font-sans-bold text-2xl">Start a game</Text>
-        <Field
-          label="Game name"
-          testID="game-name-input"
-          value={gameName}
-          onChangeText={setGameName}
-          placeholder="Catan"
-        />
-        <Button
-          testID="create-button"
-          label={pending === "create" ? "Creating..." : "Create"}
-          onPress={onCreate}
-          disabled={pending !== null}
-        />
+        {isSignedIn ? (
+          <>
+            <Field
+              label="Game name"
+              testID="game-name-input"
+              value={gameName}
+              onChangeText={setGameName}
+              placeholder="Catan"
+            />
+            <Button
+              testID="create-button"
+              label={pending === "create" ? "Creating..." : "Create"}
+              onPress={onCreate}
+              disabled={pending !== null}
+            />
+          </>
+        ) : (
+          <Pressable
+            testID="create-sign-in-prompt"
+            onPress={() => router.push("/(auth)/sign-in")}
+            className="border border-tertiary bg-black px-6 py-3"
+          >
+            <Text className="text-tertiary font-sans-medium text-lg text-center">
+              Sign in to start a game
+            </Text>
+          </Pressable>
+        )}
       </View>
     </ScrollView>
   );
