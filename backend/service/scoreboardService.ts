@@ -5,7 +5,6 @@ import type { ScoreboardCreateRequest, ScoreboardDTO } from "../dto/ScoreboardDT
 import { InternalServerError, NotFoundError } from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
 import { generateCode } from "../utils/generateCode";
-import { time } from "effect/Console";
 
 /**
  * Row shape produced by {@link boardColumns}. Derived from the schema via
@@ -97,8 +96,7 @@ const createScoreboard = (db: Db) => (scoreboardReq: ScoreboardCreateRequest) =>
 const getScoreboard = (db: Db) => (id: string) =>
   Effect.gen(function* () {
     const scoreboards = yield* Effect.tryPromise({
-      try: () =>
-        db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
+      try: () => db.select(boardColumns).from(scoreboardsTable).where(eq(scoreboardsTable.id, id)),
       catch: () =>
         new InternalServerError({
           message: `Internal Server Error`,
@@ -170,7 +168,9 @@ export const getScoreboardByCode = (db: Db) => (code: string) =>
 
     if (!scoreboard) {
       return yield* Effect.fail(
-        new NotFoundError({ message: `scoreboard with code:${code} not found` }),
+        new NotFoundError({
+          message: `scoreboard with code:${code} not found`,
+        }),
       );
     }
 
