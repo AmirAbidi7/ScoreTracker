@@ -13,12 +13,7 @@ import {
   ScoreboardSocketLive,
   type ScoreboardSocketInterface,
 } from "../service/scoreboardSocket";
-import {
-  requireUserId,
-  userIdOf,
-  verifySessionTokenLive,
-  type VerifySessionToken,
-} from "../utils/auth";
+import { requireUserId, verifySessionTokenLive, type VerifySessionToken } from "../utils/auth";
 
 export type ScoreboardControllerInterface = {
   readonly createScoreboard: (
@@ -72,10 +67,17 @@ const getScoreboards =
     });
 
 const deleteScoreboard =
-  (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
+  (
+    scoreboardService: ScoreboardServiceInterface,
+    scoreboardSocket: ScoreboardSocketInterface,
+    verify: VerifySessionToken,
+  ) =>
   (req: Request<{ id: string }>, res: Response) =>
     Effect.gen(function* () {
-      const code = yield* scoreboardService.deleteScoreboard(req.params.id, userIdOf(req));
+      const userId = yield* requireUserId(req, verify).pipe(
+        Effect.catchTag("UnauthorizedError", () => Effect.succeed(null)),
+      );
+      const code = yield* scoreboardService.deleteScoreboard(req.params.id, userId);
       yield* scoreboardSocket.disconnectFromScoreboard(code);
       res.status(StatusCodes.OK).json("Scoreboard deleted successfully!");
     });
@@ -107,7 +109,7 @@ export const ScoreboardControllerLive = Layer.effect(
       createScoreboard: createScoreboard(scoreboardService, verifySessionTokenLive),
       getScoreboard: getScoreboard(scoreboardService),
       getScoreboards: getScoreboards(scoreboardService),
-      deleteScoreboard: deleteScoreboard(scoreboardService, scoreboardSocket),
+      deleteScoreboard: deleteScoreboard(scoreboardService, scoreboardSocket, verifySessionTokenLive),
       joinScoreboard: joinScoreboard(scoreboardService),
       claimScoreboard: claimScoreboard(scoreboardService, verifySessionTokenLive),
     };
