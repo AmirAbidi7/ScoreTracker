@@ -3,7 +3,13 @@ import { Context, Effect, Layer, PartitionedSemaphore } from "effect";
 import { Database, DatabaseLive, type Db } from "../config/db";
 import type { ScoreboardDTO } from "../dto/ScoreboardDTO";
 import type { ScoreboardIntent } from "../dto/ScoreboardIntent";
-import { InternalServerError, InvalidIntentError, NotFoundError } from "../errors/errors";
+import {
+  ForbiddenError,
+  InternalServerError,
+  InvalidIntentError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../errors/errors";
 import { scoreboardsTable } from "../models/Scoreboard";
 import { getScoreboardByCode, toScoreboardDTO } from "./scoreboardService";
 
@@ -60,7 +66,11 @@ export type ScoreboardIntentServiceInterface = {
   readonly applyIntentToCode: (
     code: string,
     intent: ScoreboardIntent,
-  ) => Effect.Effect<ScoreboardDTO, NotFoundError | InternalServerError | InvalidIntentError>;
+    userId: string | null,
+  ) => Effect.Effect<
+    ScoreboardDTO,
+    NotFoundError | InternalServerError | InvalidIntentError | UnauthorizedError | ForbiddenError
+  >;
 };
 
 export class ScoreboardIntentService extends Context.Service<
@@ -74,9 +84,20 @@ const nextUpdateTime = (previous: string): Date =>
   new Date(Math.max(Date.now(), Date.parse(previous) + 1));
 
 export const applyIntentToCode =
-  (db: Db) => (code: string, intent: ScoreboardIntent) =>
+  (db: Db) => (code: string, intent: ScoreboardIntent, userId: string | null) =>
     PartitionedSemaphore.withPermit(INTENT_WRITES, code, Effect.gen(function* () {
+      if (!userId) {
+        return yield* Effect.fail(
+          new UnauthorizedError({ message: "Sign in to change this board" }),
+        );
+      }
       const current = yield* getScoreboardByCode(db)(code);
+
+      if (current.ownerId === null) {
+        return yield* Effect.fail(
+          new ForbiddenError({ message: "Claim this board before changing it" }),
+        );
+      }
 
       const next = yield* applyIntent(current, intent);
 

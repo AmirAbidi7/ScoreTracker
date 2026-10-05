@@ -10,6 +10,7 @@ const board = (players: { id: number; name: string; score: number }[] = []): Sco
   code: "AB12CD",
   players,
   updateTime: "2026-09-25T10:00:00.000Z",
+  ownerId: "user_owner",
 });
 
 const run = <A, E>(eff: Effect.Effect<A, E>) => Effect.runPromise(Effect.result(eff));
@@ -45,6 +46,7 @@ describe("applyIntent", () => {
       code: "AB12CD",
       players: [{ id: 1, name: "Amir", score: 25 }],
       updateTime: "2026-09-25T10:00:00.000Z",
+      ownerId: "user_owner",
     });
   });
 

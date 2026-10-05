@@ -18,6 +18,7 @@ describe("the scoreboard routes", () => {
       "post /scoreboard",
       "get /scoreboard",
       "get /scoreboard/join/:code",
+      "post /scoreboard/:id/claim",
       "get /scoreboard/:id",
       "delete /scoreboard/:id",
     ]);

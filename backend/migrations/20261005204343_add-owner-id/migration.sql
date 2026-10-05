@@ -1,0 +1,1 @@
+ALTER TABLE "scoreboards" ADD COLUMN "ownerId" text;

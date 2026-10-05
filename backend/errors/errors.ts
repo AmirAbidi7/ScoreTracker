@@ -13,6 +13,12 @@ export class UnauthorizedError extends Data.TaggedError("UnauthorizedError")<{
   readonly code = StatusCodes.UNAUTHORIZED;
 }
 
+export class ForbiddenError extends Data.TaggedError("ForbiddenError")<{
+  message: string;
+}> {
+  readonly code = StatusCodes.FORBIDDEN;
+}
+
 export class ValidationError extends Data.TaggedError("ValidationError")<{
   message: string;
   fields: Record<string, string>;
@@ -32,4 +38,9 @@ export class InvalidIntentError extends Data.TaggedError("InvalidIntentError")<{
   readonly code = StatusCodes.BAD_REQUEST;
 }
 
-export type ApiError = NotFoundError | UnauthorizedError | ValidationError | InternalServerError;
+export type ApiError =
+  | NotFoundError
+  | UnauthorizedError
+  | ForbiddenError
+  | ValidationError
+  | InternalServerError;

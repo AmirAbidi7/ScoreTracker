@@ -10,6 +10,7 @@ type Row = {
   code: string;
   players: Player[];
   updateTime: Date;
+  ownerId: string | null;
 };
 
 const row = (players: Player[]): Row => ({
@@ -18,7 +19,10 @@ const row = (players: Player[]): Row => ({
   code: "AB12CD",
   players,
   updateTime: new Date("2026-09-25T10:00:00.000Z"),
+  ownerId: "user_owner",
 });
+
+const SIGNED_IN = "user_owner";
 
 type Write = { players: Player[]; updateTime: Date };
 
@@ -75,8 +79,8 @@ describe("applyIntentToCode", () => {
     const apply = applyIntentToCode(fake.db);
 
     const [first, second] = await Promise.all([
-      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 })),
-      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 })),
+      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN)),
+      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN)),
     ]);
 
     expect(fake.row().players).toEqual([{ id: 1, name: "Amir", score: 2 }]);
@@ -89,8 +93,8 @@ describe("applyIntentToCode", () => {
     const apply = applyIntentToCode(fake.db);
 
     await Promise.all([
-      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 })),
-      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 })),
+      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN)),
+      run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN)),
     ]);
 
     expect(fake.log).toEqual(["read", "write", "read", "write"]);
@@ -102,8 +106,8 @@ describe("applyIntentToCode", () => {
 
     const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-25T10:00:00.000Z"));
     try {
-      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }));
-      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }));
+      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN));
+      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN));
     } finally {
       clock.mockRestore();
     }
@@ -121,7 +125,7 @@ describe("applyIntentToCode", () => {
 
     const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-25T12:00:00.000Z"));
     try {
-      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }));
+      await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN));
     } finally {
       clock.mockRestore();
     }
@@ -134,12 +138,12 @@ describe("applyIntentToCode", () => {
     const apply = applyIntentToCode(fake.db);
 
     const refused = await Effect.runPromise(
-      Effect.result(apply("AB12CD", { type: "addScore", playerId: 99, amount: 1 })),
+      Effect.result(apply("AB12CD", { type: "addScore", playerId: 99, amount: 1 }, SIGNED_IN)),
     );
     expect(Result.isFailure(refused)).toBe(true);
     expect(fake.log).toEqual(["read"]);
 
-    const accepted = await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }));
+    const accepted = await run(apply("AB12CD", { type: "addScore", playerId: 1, amount: 1 }, SIGNED_IN));
 
     expect(accepted.players[0]?.score).toBe(1);
     expect(fake.log).toEqual(["read", "read", "write"]);

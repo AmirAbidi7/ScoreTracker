@@ -13,6 +13,12 @@ import {
   ScoreboardSocketLive,
   type ScoreboardSocketInterface,
 } from "../service/scoreboardSocket";
+import {
+  requireUserId,
+  userIdOf,
+  verifySessionTokenLive,
+  type VerifySessionToken,
+} from "../utils/auth";
 
 export type ScoreboardControllerInterface = {
   readonly createScoreboard: (
@@ -32,6 +38,10 @@ export type ScoreboardControllerInterface = {
     req: Request<{ code: string }>,
     res: Response,
   ) => Effect.Effect<void, ApiError>;
+  readonly claimScoreboard: (
+    req: Request<{ id: string }>,
+    res: Response,
+  ) => Effect.Effect<void, ApiError>;
 };
 export class ScoreboardController extends Context.Service<
   ScoreboardController,
@@ -39,10 +49,11 @@ export class ScoreboardController extends Context.Service<
 >()("ScoreboardController") {}
 
 const createScoreboard =
-  (scoreboardService: ScoreboardServiceInterface) =>
+  (scoreboardService: ScoreboardServiceInterface, verify: VerifySessionToken) =>
   (req: Request<{}, {}, { scoreboard: ScoreboardCreateRequest }>, res: Response) =>
     Effect.gen(function* () {
-      const scoreboard = yield* scoreboardService.createScoreboard(req.body.scoreboard);
+      const userId = yield* requireUserId(req, verify);
+      const scoreboard = yield* scoreboardService.createScoreboard(req.body.scoreboard, userId);
       res.status(StatusCodes.CREATED).json(scoreboard);
     });
 
@@ -64,7 +75,7 @@ const deleteScoreboard =
   (scoreboardService: ScoreboardServiceInterface, scoreboardSocket: ScoreboardSocketInterface) =>
   (req: Request<{ id: string }>, res: Response) =>
     Effect.gen(function* () {
-      const code = yield* scoreboardService.deleteScoreboard(req.params.id);
+      const code = yield* scoreboardService.deleteScoreboard(req.params.id, userIdOf(req));
       yield* scoreboardSocket.disconnectFromScoreboard(code);
       res.status(StatusCodes.OK).json("Scoreboard deleted successfully!");
     });
@@ -77,6 +88,15 @@ const joinScoreboard =
       res.status(StatusCodes.OK).json(scoreboard);
     });
 
+const claimScoreboard =
+  (scoreboardService: ScoreboardServiceInterface, verify: VerifySessionToken) =>
+  (req: Request<{ id: string }>, res: Response) =>
+    Effect.gen(function* () {
+      const userId = yield* requireUserId(req, verify);
+      const scoreboard = yield* scoreboardService.claimScoreboard(req.params.id, userId);
+      res.status(StatusCodes.OK).json(scoreboard);
+    });
+
 export const ScoreboardControllerLive = Layer.effect(
   ScoreboardController,
   Effect.gen(function* () {
@@ -84,11 +104,12 @@ export const ScoreboardControllerLive = Layer.effect(
     const scoreboardSocket = yield* ScoreboardSocket;
 
     return {
-      createScoreboard: createScoreboard(scoreboardService),
+      createScoreboard: createScoreboard(scoreboardService, verifySessionTokenLive),
       getScoreboard: getScoreboard(scoreboardService),
       getScoreboards: getScoreboards(scoreboardService),
       deleteScoreboard: deleteScoreboard(scoreboardService, scoreboardSocket),
       joinScoreboard: joinScoreboard(scoreboardService),
+      claimScoreboard: claimScoreboard(scoreboardService, verifySessionTokenLive),
     };
   }),
 ).pipe(Layer.provide(ScoreboardServiceLive), Layer.provide(ScoreboardSocketLive));

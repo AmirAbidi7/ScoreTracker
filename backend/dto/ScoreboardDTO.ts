@@ -11,4 +11,5 @@ export interface ScoreboardDTO {
   code: string;
   players: Player[];
   updateTime: string;
+  ownerId: string | null;
 }

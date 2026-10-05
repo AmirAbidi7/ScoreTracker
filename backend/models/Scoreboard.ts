@@ -1,4 +1,4 @@
-import { jsonb, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 
 export interface Player {
   id: number;
@@ -15,6 +15,7 @@ export const scoreboardsTable = pgTable("scoreboards", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   code: varchar({ length: 6 }).unique().notNull(),
+  ownerId: text(),
 });
 
 export type Scoreboard = typeof scoreboardsTable;

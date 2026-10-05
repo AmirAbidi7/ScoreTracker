@@ -8,6 +8,7 @@
     "start": "bun index.ts"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.76",
     "cors": "^2.8.6",
     "dotenv": "^18.0.1",
     "drizzle-orm": "^1.0.0-rc.4",

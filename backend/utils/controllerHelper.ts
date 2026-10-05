@@ -10,6 +10,7 @@ export const runController = (effect: Effect.Effect<void, ApiError>, res: Respon
         NotFoundError: handleErrors(res),
         ValidationError: handleErrors(res),
         UnauthorizedError: handleErrors(res),
+        ForbiddenError: handleErrors(res),
       }),
     ),
   );
