@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 jest.mock("@clerk/expo");
+jest.mock("expo-router", () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
 import { configureStore } from "@reduxjs/toolkit";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { Provider } from "react-redux";
